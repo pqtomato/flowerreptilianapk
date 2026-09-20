@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.wanhong.tender'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.wanhong.tender'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+        // 手机本地自运行：不需要多语言资源，锁定中文
+        resConfigs 'zh', 'en'
+    }
+
+    buildTypes {
+        release {
+            // 个人自用，不混淆，方便出问题时看堆栈
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // 用调试密钥签名：个人装机直接用，无需自己建keystore。
+            // 注意：这样签出来的包不能上应用商店（也不需要）。
+            signingConfig signingConfigs.debug
+        }
+        debug {
+            applicationIdSuffix '.debug'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        // java.time / java.util.stream 在低版本安卓上的兼容支持
+        coreLibraryDesugaringEnabled true
+    }
+
+    packaging {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*',
+                         'META-INF/*.kotlin_module', 'META-INF/versions/9/*']
+        }
+    }
+}
+
+dependencies {
+    implementation project(':core')
+
+    // WorkManager 依赖 androidx.core；通知用 NotificationCompat
+    implementation 'androidx.core:core:1.13.1'
+    // 定时后台采集
+    implementation 'androidx.work:work-runtime:2.9.1'
+    // 应用内本地 HTTP 服务（复用现有手机端网页，无需改动页面代码）
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    // 安卓侧的网络实现（内核里的 HttpTransport 由它实现）
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+}

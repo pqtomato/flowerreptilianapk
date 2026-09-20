@@ -1,0 +1,187 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: flower-tender-crawler
+
+  # ---------- 默认数据源：H2 文件库，零配置启动 ----------
+  # 数据落在 ./data/tenderdb.mv.db。如需用外部工具连接，可自行追加 ;AUTO_SERVER=TRUE
+  # （注意 H2 2.x 不支持 AUTO_SERVER 与 DB_CLOSE_ON_EXIT 同时出现）
+  datasource:
+    url: jdbc:h2:file:./data/tenderdb;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+logging:
+  level:
+    root: INFO
+    com.wanhong.crawler: INFO
+
+# =====================================================================
+#  爬虫配置
+# =====================================================================
+crawler:
+  # 总开关，false 时所有采集入口直接返回未启用
+  enabled: true
+
+  # 统一时区：截止日期与"是否过期"判断都依赖它
+  # （上一版系统的教训：容器默认 UTC 会让过期判断偏移 8 小时）
+  timezone: Asia/Shanghai
+
+  # 随机 UA 池，避免固定指纹
+  user-agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0"
+
+  request:
+    connect-timeout-seconds: 15
+    timeout-seconds: 25
+    # 单个请求失败重试次数（网络异常 / 5xx / 429 / 403）
+    retry-times: 3
+    retry-backoff-millis: 1200
+    # 同一域名两次请求之间的最小间隔（毫秒），礼貌抓取
+    min-interval-millis: 700
+    # 单次采集最多抓取多少个详情页
+    max-detail-per-run: 300
+    # 全局跳过 HTTPS 证书校验（慎用，保持 false）
+    insecure-tls: false
+    # 仅对这些域名跳过证书校验。
+    # 安庆阳光采购平台 www.wyxmzx.com 的证书已于 2026-09-19 过期，
+    # 站点续期后可把本行删除。若不想跳过校验，也可把它换成 http（但该站
+    # HTTP/HTTPS 是不同的虚拟主机，HTTP 下列表接口返回空，不推荐）。
+    insecure-tls-hosts:
+      - www.wyxmzx.com
+    # 首次访问某域名前先 GET 一次站点首页，拿 WAF cookie（如安庆的 __jsluid_s）；
+    # 遇到 403 会自动清理 cookie 并重新预热
+    warm-up: true
+
+  filter:
+    # 标题关键词：用于站内检索 + 标题命中判定
+    title-keywords-file: keywords/flower-keywords.txt
+    # 正文关键词：正文命中判定（更精准，避免"绿化"类宽泛词刷量）
+    content-keywords-file: keywords/flower-core-keywords.txt
+    # 排除词：命中即丢弃。『养护』『绿化』这类词太宽泛，
+    # 不配排除词会把车辆维修、厕所管护、公路养护都捞进来（上一版系统的核心教训）
+    # 排除词只判定标题，正文顺带提及不误伤
+    exclude-keywords-file: keywords/exclude-keywords.txt
+    extra-title-keywords: []
+    extra-content-keywords: []
+    # 标题 / 正文命中开关
+    match-title: true
+    match-content: true
+    # 额外排除词（追加在文件之外）
+    exclude-keywords: []
+
+  # 报名 / 投标截止日期的解析与估算
+  deadline:
+    parse-from-content: true
+    # 正文里解析不到时，按「发布日期 + N 天」估算
+    default-days: 60
+    # 解析结果偏离发布日期超过 N 天视为误判，改用估算值
+    max-days: 400
+
+  # 已下架公告校验（沿用上一版系统的做法：采集后抽查，避免展示死链）
+  verify:
+    enabled: true
+    # 单次最多校验多少条
+    limit: 150
+    # 同一公告多少小时内不重复校验
+    skip-hours: 12
+
+  schedule:
+    enabled: true
+    # 每天 02:30 全量采集
+    cron: "0 30 2 * * ?"
+    zone: Asia/Shanghai
+
+  detail:
+    # 是否抓取详情页正文
+    enabled: true
+    # 正文最大保存长度
+    max-content-length: 30000
+
+  sites:
+    # ---- 安庆市公共资源交易服务网（epoint 站群，走站内检索接口）----
+    aqggzy:
+      enabled: true
+      name: 安庆市公共资源交易服务网
+      base-url: https://aqggzy.anqing.gov.cn
+      search-path: /inteligentsearch/rest/esinteligentsearch/getFullTextDataNew
+      referer: https://aqggzy.anqing.gov.cn/jyxx/003001/construction.html
+      # 检索字段：title 仅标题；改成 "title;content" 可扩大召回但噪声更多
+      search-fields: title
+      page-size: 30
+      max-pages-per-keyword: 2
+      # 只采集最近 N 天；0 = 不限（首次建库要历史数据时设为 0，
+      # 也可在 /api/crawl/run?lookbackDays=0 单次覆盖）
+      # 不加时间窗会捞到大量早已过期的老公告（实测 wyxmzx 关键词"绿化"会返回 2024 年记录）
+      lookback-days: 30
+      # 检索接口返回的正文长度上限。该站索引里存在大量「转载但本站无落地页」的
+      # 县级公告（拼出的详情地址必然 404），把 cl 调大可以保证这些记录也有正文。
+      content-length: 2000
+      # 这些分类前缀属于新闻资讯，不是招标公告，直接丢弃
+      excluded-category-prefixes:
+        - "002"
+
+    # ---- 安庆市城市管理局 通知公告（政府站群，服务端渲染列表）----
+    cgj:
+      enabled: true
+      name: 安庆市城市管理局-通知公告
+      base-url: https://cgj.anqing.gov.cn
+      list-url: /xxfb/tzgg/
+      column-url: /content/column/14015578
+      page-size: 20
+      # 列表页最多翻多少页（每页 20 条）
+      max-pages: 2
+
+    # ---- 安庆市阳光采购交易服务平台（epoint 站群，走站内检索接口）----
+    wyxmzx:
+      enabled: true
+      name: 安庆市阳光采购交易服务平台
+      base-url: https://www.wyxmzx.com
+      search-path: /inteligentsearch/rest/esinteligentsearch/getFullTextDataNew
+      # 重要：该站的 WAF 规则很特殊 —— 只要检索接口请求带了 Referer 头，
+      # 就会被判定为「疑似跨站请求伪造」返回 400/503，因此这里必须留空。
+      # （详情页、列表页带 Referer 是正常的，不受影响。）
+      referer: ""
+      search-fields: title
+      # epoint 索引分类号：080 = 该平台全部交易信息
+      cnum: "080"
+      page-size: 30
+      max-pages-per-keyword: 2
+      # 只采集最近 N 天；0 = 不限
+      lookback-days: 30
+      content-length: 3000
+      excluded-category-prefixes: []
+
+    # ---- 安庆市城市管理局 通知公告（列表页服务端渲染，无时间窗概念）----
+    # 列表页只抓最近若干页，因此不需要 lookback-days

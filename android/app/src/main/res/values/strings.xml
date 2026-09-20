@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">花卉招标监控</string>
+    <string name="crawl_channel_name">采集任务</string>
+    <string name="crawl_channel_desc">后台采集招标公告时的进度提示</string>
+    <string name="crawl_running">正在采集招标公告…</string>
+</resources>

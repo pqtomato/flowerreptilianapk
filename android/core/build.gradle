@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+dependencies {
+    // HTML 解析（安卓可用）
+    api 'org.jsoup:jsoup:1.17.2'
+    // epoint 检索接口是 JSON，用 Jackson 解析
+    api 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat = 'full'
+    }
+    // 让测试输出中文不乱码
+    systemProperty 'file.encoding', 'UTF-8'
+    // 联调测试（LiveCrawlIT）默认跳过，它需要联网打真实站点。
+    // 手动执行： gradle :core:test --tests '*LiveCrawlIT' -Dlive=true
+    systemProperty 'live', System.getProperty('live', 'false')
+}

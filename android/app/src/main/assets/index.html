@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <!-- 手机端适配：viewport-fit=cover 配合 safe-area-inset 处理刘海屏与底部横条 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
+    <meta name="theme-color" content="#1f7a4d"/>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+    <meta name="format-detection" content="telephone=no"/>
+    <title>花卉招标监控</title>
+    <style>
+        :root {
+            --primary: #1f7a4d;
+            --primary-dark: #145c39;
+            --primary-light: #e8f5ee;
+            --border: #e4eae7;
+            --text: #1f2d28;
+            --muted: #7b8b84;
+            --bg: #f2f6f4;
+            --card: #ffffff;
+            --danger: #d64541;
+            --warn: #d98324;
+            --ok: #2f855a;
+            --radius: 12px;
+            /* 手机端安全区：刘海屏 / 底部手势条 */
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --header-h: 108px;
+            --tabbar-h: 58px;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html, body { margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 15px;
+            line-height: 1.55;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* ---------------- 顶部固定区 ---------------- */
+        .app-header {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 30;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #fff;
+            padding: calc(var(--safe-top) + 10px) 14px 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.12);
+        }
+
+        .title-row { display: flex; align-items: center; gap: 8px; }
+        .title-row h1 { font-size: 16px; margin: 0; font-weight: 600; flex: 1; letter-spacing: .3px; }
+        .title-row .count-new {
+            background: var(--danger); color: #fff; border-radius: 999px;
+            font-size: 11px; padding: 1px 7px; font-weight: 600;
+        }
+        .icon-btn {
+            background: rgba(255,255,255,.18); border: 0; color: #fff;
+            width: 34px; height: 34px; border-radius: 50%;
+            font-size: 15px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+        .icon-btn:active { background: rgba(255,255,255,.32); }
+
+        .search-row { display: flex; gap: 8px; margin-top: 10px; }
+        .search-box {
+            flex: 1; display: flex; align-items: center; gap: 6px;
+            background: rgba(255,255,255,.95); border-radius: 10px; padding: 0 10px; height: 40px;
+        }
+        .search-box input {
+            flex: 1; border: 0; outline: 0; background: transparent;
+            font-size: 15px; color: var(--text); height: 100%; min-width: 0;
+        }
+        .search-box .clear { color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 2px; }
+        .search-btn {
+            border: 0; border-radius: 10px; background: rgba(255,255,255,.22); color: #fff;
+            padding: 0 14px; height: 40px; font-size: 14px; cursor: pointer;
+        }
+        .search-btn:active { background: rgba(255,255,255,.36); }
+
+        /* ---------------- 筛选 chips ---------------- */
+        .chips {
+            position: fixed; left: 0; right: 0; top: calc(var(--safe-top) + 106px);
+            z-index: 25; background: var(--bg);
+            display: flex; gap: 8px; padding: 8px 14px; overflow-x: auto;
+            -webkit-overflow-scrolling: touch; scrollbar-width: none;
+            border-bottom: 1px solid var(--border);
+        }
+        .chips::-webkit-scrollbar { display: none; }
+        .chip {
+            flex: 0 0 auto; border: 1px solid var(--border); background: var(--card);
+            color: var(--muted); border-radius: 999px; padding: 6px 14px;
+            font-size: 13px; cursor: pointer; white-space: nowrap;
+        }
+        .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 500; }
+        .chip .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); margin-left: 4px; vertical-align: middle; }
+
+        /* ---------------- 主体 ---------------- */
+        main {
+            padding: calc(var(--safe-top) + var(--header-h)) 12px calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
+            max-width: 900px; margin: 0 auto;
+        }
+
+        .summary-bar {
+            display: flex; gap: 8px; margin: 4px 0 10px; font-size: 12px; color: var(--muted);
+            align-items: center; flex-wrap: wrap;
+        }
+        .summary-bar strong { color: var(--primary); font-size: 14px; }
+
+        /* 卡片列表：手机端不用表格 */
+        .card {
+            background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 12px 13px; margin-bottom: 10px; position: relative;
+        }
+        .card:active { background: #fafcfb; }
+        .card .card-title {
+            font-size: 15px; font-weight: 600; line-height: 1.45; margin: 0 34px 8px 0;
+            word-break: break-word; cursor: pointer;
+        }
+        .card .card-title mark { background: #fff3bf; color: inherit; border-radius: 2px; padding: 0 1px; }
+        .star {
+            position: absolute; top: 8px; right: 8px;
+            width: 30px; height: 30px; border: 0; background: transparent;
+            font-size: 17px; line-height: 1; cursor: pointer; color: #c8d2cd;
+        }
+        .star.on { color: #f0a500; }
+
+        .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .badge {
+            font-size: 11px; padding: 2px 7px; border-radius: 4px;
+            background: var(--primary-light); color: var(--primary-dark); white-space: nowrap;
+        }
+        .badge.danger { background: #fdeceb; color: var(--danger); font-weight: 600; }
+        .badge.warn { background: #fdf3e5; color: var(--warn); font-weight: 600; }
+        .badge.ok { background: #e8f5ee; color: var(--ok); }
+        .badge.gray { background: #eef1ef; color: var(--muted); }
+        .badge.new { background: var(--danger); color: #fff; }
+        .badge.est { background: #eef1ef; color: var(--muted); font-weight: 400; }
+
+        .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+        .keywords { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .kw { font-size: 11px; background: #f2f6f4; color: var(--muted); border-radius: 4px; padding: 1px 6px; }
+
+        .empty { text-align: center; color: var(--muted); padding: 48px 16px; font-size: 14px; }
+        .empty .big { font-size: 34px; display: block; margin-bottom: 10px; opacity: .5; }
+
+        .load-more {
+            width: 100%; padding: 12px; margin: 4px 0 8px;
+            border: 1px solid var(--border); background: var(--card); color: var(--primary);
+            border-radius: var(--radius); font-size: 14px; cursor: pointer;
+        }
+        .load-more[disabled] { color: var(--muted); }
+        .loading-line { text-align: center; color: var(--muted); font-size: 13px; padding: 10px; }
+
+        /* ---------------- 底部 Tab ---------------- */
+        .tabbar {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+            display: flex; background: var(--card);
+            border-top: 1px solid var(--border);
+            padding-bottom: var(--safe-bottom);
+        }
+        .tabbar button {
+            flex: 1; border: 0; background: transparent; color: var(--muted);
+            padding: 8px 0 7px; font-size: 11px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            min-height: var(--tabbar-h);
+        }
+        .tabbar button .tab-icon { font-size: 19px; line-height: 1.1; }
+        .tabbar button.active { color: var(--primary); font-weight: 600; }
+        .tabbar button .tab-dot {
+            position: absolute; transform: translate(14px, -2px);
+            width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
+        }
+
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        .section {
+            background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 14px; margin-bottom: 12px;
+        }
+        .section h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+        .section h2::before { content: ""; width: 3px; height: 14px; background: var(--primary); border-radius: 2px; }
+
+        .field { margin-bottom: 12px; }
+        .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+        select, input[type="date"], input[type="number"], input[type="text"] {
+            width: 100%; height: 42px; border: 1px solid var(--border); border-radius: 10px;
+            padding: 0 11px; font-size: 15px; background: #fff; color: var(--text);
+            font-family: inherit; outline: 0;
+        }
+        select:focus, input:focus { border-color: var(--primary); }
+        .field-pair { display: flex; gap: 10px; }
+        .field-pair > * { flex: 1; min-width: 0; }
+
+        .btn {
+            width: 100%; height: 46px; border: 0; border-radius: 10px;
+            background: var(--primary); color: #fff; font-size: 16px; font-weight: 500;
+            cursor: pointer; font-family: inherit;
+        }
+        .btn:active { background: var(--primary-dark); }
+        .btn:disabled { background: #b9c9c1; cursor: not-allowed; }
+        .btn.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+        .btn.ghost:active { background: var(--primary-light); }
+        .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+
+        .status-line {
+            font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.6;
+            background: var(--bg); border-radius: 8px; padding: 10px;
+        }
+        .status-line .running { color: var(--warn); font-weight: 600; }
+        .status-line .ok { color: var(--ok); font-weight: 600; }
+        .status-line .fail { color: var(--danger); font-weight: 600; }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .stat { background: var(--bg); border-radius: 10px; padding: 10px; text-align: center; }
+        .stat .v { font-size: 19px; font-weight: 700; color: var(--primary); line-height: 1.2; }
+        .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+        .log-item { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 13px; }
+        .log-item:last-child { border-bottom: 0; }
+        .log-item .row1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .log-item .time { color: var(--muted); font-size: 11px; }
+        .log-item .row2 { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+        .hint { font-size: 12px; color: var(--muted); line-height: 1.7; }
+        .hint a { color: var(--primary); }
+
+        /* ---------------- 关键词维护 ---------------- */
+        .kw-group { margin-bottom: 16px; }
+        .kw-group-title {
+            font-size: 13px; font-weight: 600; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .kw-group-title .tip { font-weight: 400; font-size: 11px; color: var(--muted); }
+        .kw-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            border: 1px solid var(--border); background: var(--card);
+            border-radius: 999px; padding: 5px 6px 5px 11px;
+            margin: 0 6px 6px 0; font-size: 13px; line-height: 1.2;
+        }
+        .kw-chip.custom { border-color: var(--primary); background: var(--primary-light); }
+        .kw-chip.off { opacity: .55; text-decoration: line-through; }
+        .kw-chip .hits { font-size: 11px; color: var(--muted); }
+        .kw-chip .hits.zero { color: #c3cdc8; }
+        .kw-chip.custom .hits { color: var(--primary-dark); }
+        .kw-chip .rm {
+            border: 0; background: transparent; color: var(--muted);
+            font-size: 15px; line-height: 1; padding: 2px 4px; cursor: pointer;
+        }
+        .kw-chip .rm:active { color: var(--danger); }
+
+        /* ---------------- 底部抽屉 / 全屏详情 ---------------- */
+        .sheet-mask {
+            position: fixed; inset: 0; background: rgba(0,0,0,.45);
+            z-index: 40; display: none;
+        }
+        .sheet-mask.show { display: block; }
+
+        .sheet {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+            background: var(--card); border-radius: 16px 16px 0 0;
+            max-height: 88vh; display: flex; flex-direction: column;
+            transform: translateY(102%); transition: transform .22s ease-out;
+            padding-bottom: var(--safe-bottom);
+        }
+        .sheet.show { transform: translateY(0); }
+        .sheet-head {
+            padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+        }
+        .sheet-head h3 { margin: 0; font-size: 15px; flex: 1; font-weight: 600; }
+        .sheet-head .close {
+            border: 0; background: var(--bg); color: var(--muted);
+            width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer;
+        }
+        .sheet-body { padding: 14px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .sheet-foot { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; flex: 0 0 auto; }
+
+        /* 详情全屏样式（手机上更舒服） */
+        .sheet.detail { max-height: 94vh; height: 94vh; }
+        .detail-title { font-size: 17px; font-weight: 600; line-height: 1.5; margin: 0 0 10px; word-break: break-word; }
+        .detail-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .detail-kv { font-size: 13px; color: var(--muted); margin-bottom: 4px; word-break: break-all; }
+        .detail-content {
+            white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.75;
+            background: var(--bg); border-radius: 8px; padding: 12px; margin-top: 8px;
+        }
+        .attach-list a {
+            display: block; padding: 10px 12px; background: var(--bg); border-radius: 8px;
+            margin-bottom: 6px; color: var(--primary); text-decoration: none; font-size: 13px;
+            word-break: break-all;
+        }
+
+        .toast {
+            position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 20px);
+            transform: translateX(-50%); z-index: 60;
+            background: rgba(31,45,40,.92); color: #fff; font-size: 13px;
+            padding: 9px 16px; border-radius: 999px; max-width: 84vw; text-align: center;
+            opacity: 0; pointer-events: none; transition: opacity .2s;
+        }
+        .toast.show { opacity: 1; }
+
+        /* ---------------- 大屏（平板 / 桌面） ---------------- */
+        @media (min-width: 768px) {
+            :root { --header-h: 104px; }
+            body { font-size: 15px; }
+            .app-header { padding-left: 24px; padding-right: 24px; }
+            .chips { padding-left: 24px; padding-right: 24px; }
+            main { padding-left: 20px; padding-right: 20px; }
+            .card-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .card { margin-bottom: 0; }
+            .sheet { left: auto; right: 0; top: 0; width: 620px; max-height: 100vh; height: 100vh; border-radius: 0; }
+            .sheet.detail { height: 100vh; max-height: 100vh; }
+            .sheet.show { transform: translateX(0); }
+            .sheet { transform: translateX(102%); }
+            .stat-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        /* 深色模式（手机端常用） */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #2e9963;
+                --primary-dark: #237650;
+                --primary-light: #1d3a2c;
+                --border: #2b3630;
+                --text: #e6ece9;
+                --muted: #93a39b;
+                --bg: #151a18;
+                --card: #1d2421;
+                --ok: #4caf7d;
+            }
+            select, input[type="date"], input[type="number"], input[type="text"] { background: #202825; color: var(--text); }
+            .btn.ghost { background: var(--card); }
+            .card:active { background: #222b27; }
+            .card .card-title mark { background: #6b5a1f; }
+            .kw { background: #232c28; }
+            .badge.gray, .badge.est { background: #232c28; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ================= 顶部：标题 + 搜索 ================= -->
+<header class="app-header">
+    <div class="title-row">
+        <h1>花卉招标监控</h1>
+        <span class="count-new" id="newBadge" style="display:none">0</span>
+        <button class="icon-btn" id="btnMarkRead" title="全部标记已读">✓</button>
+        <button class="icon-btn" id="btnRefresh" title="刷新">⟳</button>
+    </div>
+    <div class="search-row">
+        <div class="search-box">
+            <span style="color:var(--muted)">🔍</span>
+            <input id="keyword" type="search" placeholder="搜索标题 / 关键词 / 区县" autocomplete="off"/>
+            <span class="clear" id="btnClearKeyword" style="display:none">✕</span>
+        </div>
+        <button class="search-btn" id="btnFilter">筛选</button>
+    </div>
+</header>
+
+<!-- ================= 筛选 chips ================= -->
+<div class="chips" id="chips">
+    <button class="chip active" data-filter="onlyOpen">未截止</button>
+    <button class="chip" data-filter="onlyNew">新公告<span class="dot" id="chipNewDot" style="display:none"></span></button>
+    <button class="chip" data-filter="tracked">收藏</button>
+    <button class="chip active" data-filter="all">全部</button>
+    <button class="chip" data-filter="sortDeadline">按截止排序</button>
+</div>
+
+<main>
+    <!-- ================= Tab 1：公告列表 ================= -->
+    <section class="panel active" id="panel-list">
+        <div class="summary-bar">
+            <span>共 <strong id="totalCount">0</strong> 条</span>
+            <span id="filterSummary"></span>
+        </div>
+        <div class="card-list" id="cardList"></div>
+        <div id="listFooter"></div>
+    </section>
+
+    <!-- ================= Tab 2：采集 ================= -->
+    <section class="panel" id="panel-crawl">
+        <div class="stat-grid">
+            <div class="stat"><div class="v" id="stTotal">0</div><div class="l">已采集</div></div>
+            <div class="stat"><div class="v" id="stOpen">0</div><div class="l">未截止</div></div>
+            <div class="stat"><div class="v" id="stNew">0</div><div class="l">新公告</div></div>
+        </div>
+
+        <div class="section">
+            <h2>采集任务</h2>
+            <div class="field">
+                <label>采集范围</label>
+                <select id="crawlSite">
+                    <option value="all">全部站点</option>
+                    <option value="aqggzy">安庆公共资源交易网</option>
+                    <option value="cgj">安庆市城管局</option>
+                    <option value="wyxmzx">安庆阳光采购平台</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>时间窗口</label>
+                <select id="crawlLookback">
+                    <option value="30" selected>最近 30 天（推荐）</option>
+                    <option value="7">最近 7 天（快速）</option>
+                    <option value="90">最近 90 天</option>
+                    <option value="0">不限（首次建库，较慢）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>检索词数量上限（留空 = 全部，手机上想快点可填 10）</label>
+                <input id="maxKeywords" type="number" min="1" placeholder="例如 10"/>
+            </div>
+            <button class="btn" id="btnCrawl">开始采集</button>
+            <div class="status-line" id="crawlStatus">正在读取状态…</div>
+        </div>
+
+        <div class="section">
+            <h2>关键词</h2>
+            <div class="hint" id="keywordInfo">加载中…</div>
+            <div class="btn-row">
+                <button class="btn ghost" id="btnGotoKeywords">去维护关键词</button>
+                <button class="btn ghost" id="btnExport">导出 CSV</button>
+            </div>
+        </div>
+
+        <div class="section">
+        <div class="section">
+            <h2>应用设置</h2>
+            <div class="field">
+                <label>定时采集</label>
+                <select id="setScheduleEnabled">
+                    <option value="true">开启（每天自动采集）</option>
+                    <option value="false">关闭（只手动采集）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>每天几点采集</label>
+                <select id="setScheduleHour"></select>
+            </div>
+            <div class="field">
+                <label>采集时间窗口</label>
+                <select id="setLookback">
+                    <option value="7">最近 7 天</option>
+                    <option value="30">最近 30 天（推荐）</option>
+                    <option value="90">最近 90 天</option>
+                    <option value="0">不限（首次建库，较慢）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>抓取详情页正文</label>
+                <select id="setFetchDetail">
+                    <option value="true">抓取（内容完整，较慢）</option>
+                    <option value="false">不抓取（快约 5 倍，用接口自带正文）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>已下架公告校验</label>
+                <select id="setVerifyLink">
+                    <option value="true">开启（避免点开是死链）</option>
+                    <option value="false">关闭（更快）</option>
+                </select>
+            </div>
+            <button class="btn" id="btnSaveSettings">保存设置</button>
+            <div class="status-line" id="settingsResult" style="display:none"></div>
+
+            <div class="hint" style="margin-top:12px">
+                <strong>后台自运行必读：</strong>安卓系统（尤其小米 / 华为 / OPPO / vivo）会限制后台任务，
+                需要手动允许本应用<b>自启动</b>与<b>后台运行</b>，并加入<b>电池优化白名单</b>，
+                否则定时采集不会执行 —— 这不是应用的问题，是系统策略。<br/>
+                <a href="javascript:void(0)" id="btnBattery">点此打开电池优化设置 →</a>
+            </div>
+            <div class="hint" id="appInfo" style="margin-top:10px"></div>
+        </div>
+            <h2>站点</h2>
+            <div id="siteList" class="hint">加载中…</div>
+        </div>
+    </section>
+
+    <!-- ================= Tab 3：关键词维护 ================= -->
+    <section class="panel" id="panel-keywords">
+        <div class="section">
+            <h2>添加关键词</h2>
+            <div class="field">
+                <label>关键词</label>
+                <input id="kwInput" type="text" placeholder="例如：绿篱、水生植物、花境" autocomplete="off"/>
+            </div>
+            <div class="field">
+                <label>作用域</label>
+                <select id="kwScope"></select>
+            </div>
+            <button class="btn" id="btnAddKeyword">添加关键词</button>
+            <div class="status-line" id="kwAddResult" style="display:none"></div>
+        </div>
+
+        <div class="section">
+            <h2>当前词表 <span class="muted" id="kwCounts" style="font-weight:400"></span></h2>
+            <div class="hint" style="margin-bottom:10px">
+                数字表示该词命中了多少条已入库公告 —— 长期为 0 的词可以考虑清理。
+                点词右侧的 ✕ 可删除自定义词 / 停用内置词。
+            </div>
+            <div id="kwGroups"><div class="loading-line">加载中…</div></div>
+        </div>
+
+        <div class="section">
+            <h2>维护操作</h2>
+            <div class="btn-row">
+                <button class="btn ghost" id="btnRescan">重扫已入库公告</button>
+                <button class="btn ghost" id="btnReloadKw">重载内置词表</button>
+            </div>
+            <button class="btn" id="btnCrawlWithKeywords" style="margin-top:10px">用当前词表采集</button>
+            <div class="status-line" id="kwRescanResult" style="display:none"></div>
+            <div class="hint" style="margin-top:10px">
+                「重扫」会用当前词表重新匹配**已经采集到库里**的公告，
+                所以新增关键词后不用重新爬一遍就能看到历史命中。
+                「用当前词表采集」则去三个站点抓新公告。
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Tab 4：采集日志 ================= -->
+    <section class="panel" id="panel-logs">
+        <div class="section">
+            <h2>最近采集日志</h2>
+            <div id="logList" class="hint">加载中…</div>
+        </div>
+        <div class="section">
+            <h2>说明</h2>
+            <div class="hint">
+                采集策略：<br/>
+                · 公共资源交易网 / 阳光采购平台走站内检索接口，按关键词逐词检索；<br/>
+                · 城管局解析服务端渲染的列表页；<br/>
+                · 默认只采集最近 30 天的公告，并按「发布时间 + 60 天」估算报名截止日期；<br/>
+                · 采集后会抽查已入库公告是否已下架，避免点开是死链。<br/><br/>
+                <a href="/api/tenders?size=5" target="_blank">接口 JSON</a> ·
+                <a href="/api/crawl/keywords" target="_blank">词表</a> ·
+                <a href="/h2-console" target="_blank">数据库控制台</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- ================= 底部 Tab 栏 ================= -->
+<nav class="tabbar">
+    <button class="active" data-tab="list"><span class="tab-icon">📋</span>公告</button>
+    <button data-tab="keywords"><span class="tab-icon">🏷️</span>关键词</button>
+    <button data-tab="crawl"><span class="tab-icon">⬇️</span>采集</button>
+    <button data-tab="logs"><span class="tab-icon">📈</span>日志</button>
+</nav>
+
+<!-- ================= 筛选抽屉 ================= -->
+<div class="sheet-mask" id="filterMask"></div>
+<div class="sheet" id="filterSheet">
+    <div class="sheet-head">
+        <h3>筛选条件</h3>
+        <button class="close" id="btnCloseFilter">✕</button>
+    </div>
+    <div class="sheet-body">
+        <div class="field">
+            <label>站点</label>
+            <select id="fSite">
+                <option value="">全部站点</option>
+                <option value="aqggzy">安庆公共资源交易网</option>
+                <option value="cgj">安庆市城管局</option>
+                <option value="wyxmzx">安庆阳光采购平台</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>区县</label>
+            <select id="fRegion"><option value="">全部区县</option></select>
+        </div>
+        <div class="field">
+            <label>发布时间范围</label>
+            <div class="field-pair">
+                <input type="date" id="fFrom"/>
+                <input type="date" id="fTo"/>
+            </div>
+        </div>
+        <div class="field">
+            <label>排序</label>
+            <select id="fSort">
+                <option value="publish">按发布时间（最新优先）</option>
+                <option value="deadline">按截止时间（最紧急优先）</option>
+            </select>
+        </div>
+        <div class="btn-row">
+            <button class="btn ghost" id="btnResetFilter">重置</button>
+            <button class="btn" id="btnApplyFilter">应用</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= 详情全屏抽屉 ================= -->
+<div class="sheet detail" id="detailSheet">
+    <div class="sheet-head">
+        <h3 id="dSheetTitle">公告详情</h3>
+        <button class="close" id="btnCloseDetail">✕</button>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
+    <div class="sheet-foot">
+        <button class="btn ghost" id="btnDetailTrack">收藏</button>
+        <a class="btn" id="btnDetailOpen" href="#" target="_blank"
+           style="display:flex;align-items:center;justify-content:center;text-decoration:none">打开原文</a>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    const SITE_LABELS = {
+        aqggzy: '公共资源交易网',
+        cgj: '城管局',
+        wyxmzx: '阳光采购平台'
+    };
+
+    const state = {
+        tab: 'list',
+        page: 0,
+        size: 15,
+        total: 0,
+        hasMore: false,
+        loading: false,
+        onlyOpen: true,
+        onlyNew: false,
+        tracked: false,
+        keyword: '',
+        site: '',
+        region: '',
+        from: '',
+        to: '',
+        sort: 'deadline',
+        currentDetail: null,
+        pollTimer: null
+    };
+
+    /* ---------------- 基础工具 ---------------- */
+    function $(id) { return document.getElementById(id); }
+
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function highlight(title, keywords) {
+        let html = escapeHtml(title);
+        if (!keywords) return html;
+        const words = keywords.split(',').filter(w => w && w.length > 1).slice(0, 12)
+            .sort((a, b) => b.length - a.length);
+        for (const word of words) {
+            const safe = escapeHtml(word);
+            if (!safe) continue;
+            html = html.split(safe).join('<mark>' + safe + '</mark>');
+        }
+        return html;
+    }
+
+    let toastTimer = null;
+    function toast(message) {
+        const el = $('toast');
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    async function api(url, options) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            let message = 'HTTP ' + response.status;
+            try {
+                const body = await response.json();
+                if (body && body.message) message = body.message;
+            } catch (e) { /* 忽略 */ }
+            throw new Error(message);
+        }
+        return response.json();
+    }
+
+    function formatDate(value) {
+        if (!value) return '未知';
+        return String(value).replace('T', ' ').substring(0, 16);
+    }
+
+    /* ---------------- 截止日期徽标：手机端最关键的信息 ---------------- */
+    function deadlineBadge(item) {
+        if (item.deadlineDate === null || item.deadlineDate === undefined) {
+            return '<span class="badge gray">截止日期未知</span>';
+        }
+        const days = item.daysLeft;
+        const estimated = item.deadlineEstimated
+            ? '<span class="badge est">估算</span>' : '';
+        if (item.expired || days < 0) {
+            return '<span class="badge gray">已截止</span>' + estimated;
+        }
+        const text = days === 0 ? '今天截止' : '剩 ' + days + ' 天';
+        const cls = days <= 3 ? 'danger' : (days <= 7 ? 'warn' : 'ok');
+        return '<span class="badge ' + cls + '">' + text + '</span>' + estimated;
+    }
+
+    /* ---------------- 列表 ---------------- */
+    function queryString() {
+        const params = new URLSearchParams();
+        if (state.site) params.set('site', state.site);
+        if (state.region) params.set('region', state.region);
+        if (state.keyword) params.set('keyword', state.keyword);
+        if (state.from) params.set('from', state.from);
+        if (state.to) params.set('to', state.to);
+        if (state.onlyOpen) params.set('onlyOpen', 'true');
+        if (state.onlyNew) params.set('onlyNew', 'true');
+        if (state.tracked) params.set('tracked', 'true');
+        params.set('sort', state.sort);
+        return params;
+    }
+
+    async function loadList(reset) {
+        if (state.loading) return;
+        state.loading = true;
+        if (reset) {
+            state.page = 0;
+            $('cardList').innerHTML = '<div class="loading-line">加载中…</div>';
+        } else {
+            $('listFooter').innerHTML = '<div class="loading-line">加载中…</div>';
+        }
+
+        const params = queryString();
+        params.set('page', state.page);
+        params.set('size', state.size);
+
+        try {
+            const data = await api('/api/tenders?' + params.toString());
+            state.total = data.totalElements;
+            state.hasMore = (state.page + 1) < data.totalPages;
+            $('totalCount').textContent = data.totalElements;
+
+            const html = data.content.map(cardHtml).join('');
+            if (reset) {
+                $('cardList').innerHTML = html ||
+                    '<div class="empty"><span class="big">🌱</span>没有符合条件的公告<br/>试试切换筛选条件，或到「采集」页抓取数据</div>';
+            } else {
+                $('cardList').insertAdjacentHTML('beforeend', html);
+            }
+            renderFooter();
+        } catch (e) {
+            $('cardList').innerHTML = '<div class="empty">加载失败：' + escapeHtml(e.message) + '</div>';
+            $('listFooter').innerHTML = '';
+        } finally {
+            state.loading = false;
+        }
+    }
+
+    function cardHtml(item) {
+        const keywords = (item.matchedKeywords || '').split(',').filter(Boolean).slice(0, 6)
+            .map(k => '<span class="kw">' + escapeHtml(k) + '</span>').join('');
+
+        const badges = [];
+        badges.push(deadlineBadge(item));
+        if (item.isNew) badges.push('<span class="badge new">新</span>');
+        if (item.accessUrl) badges.push('<span class="badge gray">跳转链接</span>');
+        if (!item.hasContent) badges.push('<span class="badge gray">无正文</span>');
+        if (item.hasAttachment) badges.push('<span class="badge ok">含附件</span>');
+        if (item.removed) badges.push('<span class="badge danger">已下架</span>');
+
+        const meta = [
+            escapeHtml(SITE_LABELS[item.siteCode] || item.siteName || item.siteCode),
+            item.region ? escapeHtml(item.region) : '',
+            escapeHtml(item.category || ''),
+            '发布 ' + escapeHtml((item.publishDate || '').substring(0, 10)),
+            item.deadlineDate ? '截止 ' + escapeHtml(formatDate(item.deadlineDate).substring(0, 10)) : ''
+        ].filter(Boolean).map(t => '<span>' + t + '</span>').join('');
+
+        return '<article class="card" data-id="' + item.id + '">' +
+            '<button class="star ' + (item.tracked ? 'on' : '') + '" data-track="' + item.id + '" ' +
+                'aria-label="收藏">' + (item.tracked ? '★' : '☆') + '</button>' +
+            '<h3 class="card-title" data-open="' + item.id + '">' +
+                highlight(item.title, item.matchedKeywords) + '</h3>' +
+            '<div class="badges">' + badges.join('') + '</div>' +
+            '<div class="meta">' + meta + '</div>' +
+            (keywords ? '<div class="keywords">' + keywords + '</div>' : '') +
+            '</article>';
+    }
+
+    function renderFooter() {
+        if (state.hasMore) {
+            $('listFooter').innerHTML = '<button class="load-more" id="btnLoadMore">加载更多</button>';
+            $('btnLoadMore').addEventListener('click', () => {
+                state.page++;
+                loadList(false);
+            });
+        } else if (state.total > 0) {
+            $('listFooter').innerHTML = '<div class="loading-line">已经到底了 · 共 ' + state.total + ' 条</div>';
+        } else {
+            $('listFooter').innerHTML = '';
+        }
+    }
+
+    // 手机端滚动到底部自动加载
+    if ('IntersectionObserver' in window) {
+        const sentinel = document.createElement('div');
+        sentinel.style.height = '1px';
+        $('listFooter').after(sentinel);
+        new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && state.hasMore && !state.loading) {
+                state.page++;
+                loadList(false);
+            }
+        }, { rootMargin: '240px' }).observe(sentinel);
+    }
+
+    /* ---------------- 收藏 ---------------- */
+    async function toggleTrack(id, button) {
+        const next = !button.classList.contains('on');
+        try {
+            await api('/api/tenders/' + id + '/track?tracked=' + next, { method: 'POST' });
+            button.classList.toggle('on', next);
+            button.textContent = next ? '★' : '☆';
+            toast(next ? '已收藏' : '已取消收藏');
+            if (state.currentDetail && state.currentDetail.id === id) {
+                state.currentDetail.tracked = next;
+                $('btnDetailTrack').textContent = next ? '取消收藏' : '收藏';
+            }
+            if (state.tracked) loadList(true);
+            loadStats();
+        } catch (e) {
+            toast('操作失败：' + e.message);
+        }
+    }
+
+    /* ---------------- 详情 ---------------- */
+    async function openDetail(id) {
+        const sheet = $('detailSheet');
+        const mask = $('filterMask');
+        $('detailBody').innerHTML = '<div class="loading-line">加载中…</div>';
+        mask.classList.add('show');
+        sheet.classList.add('show');
+        try {
+            const item = await api('/api/tenders/' + id);
+            state.currentDetail = item;
+            renderDetail(item);
+        } catch (e) {
+            $('detailBody').innerHTML = '<div class="empty">加载失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    function renderDetail(item) {
+        $('dSheetTitle').textContent = SITE_LABELS[item.siteCode] || '公告详情';
+
+        let attachments = [];
+        if (item.attachments) {
+            try { attachments = JSON.parse(item.attachments); } catch (e) { attachments = []; }
+        }
+
+        const badges = [deadlineBadge({ daysLeft: daysLeftOf(item.deadlineDate),
+            deadlineDate: item.deadlineDate, expired: isExpired(item.deadlineDate),
+            deadlineEstimated: item.deadlineEstimated })];
+        if (item.isNew) badges.push('<span class="badge new">新</span>');
+        if (item.removed) badges.push('<span class="badge danger">已下架</span>');
+
+        const content = item.content || item.summary || '（未抓取到正文，可点击下方「打开原文」查看）';
+
+        $('detailBody').innerHTML =
+            '<h2 class="detail-title">' + escapeHtml(item.title) + '</h2>' +
+            '<div class="detail-meta">' + badges.join('') + '</div>' +
+            '<div class="detail-kv">站点：' + escapeHtml(SITE_LABELS[item.siteCode] || item.siteName || '') +
+                (item.region ? ' · ' + escapeHtml(item.region) : '') +
+                (item.category ? ' · ' + escapeHtml(item.category) : '') + '</div>' +
+            '<div class="detail-kv">发布：' + escapeHtml(formatDate(item.publishDate)) + '</div>' +
+            '<div class="detail-kv">截止：' + escapeHtml(formatDate(item.deadlineDate)) +
+                (item.deadlineEstimated ? '（估算值，以原文为准）' : '') +
+                (item.deadlineSource ? ' · ' + escapeHtml(item.deadlineSource) : '') + '</div>' +
+            '<div class="detail-kv">命中：' + escapeHtml(item.matchedKeywords || '-') +
+                (item.matchedScope ? '（' + escapeHtml(item.matchedScope) + '）' : '') + '</div>' +
+            (attachments.length
+                ? '<div class="detail-kv" style="margin-top:10px">附件（' + attachments.length + '）</div>' +
+                  '<div class="attach-list">' + attachments.map(a => {
+                      const parts = String(a).split(' :: ');
+                      return '<a href="' + escapeHtml(parts[1] || '#') + '" target="_blank">📎 ' +
+                          escapeHtml(parts[0] || a) + '</a>';
+                  }).join('') + '</div>'
+                : '') +
+            '<div class="detail-content">' + escapeHtml(content) + '</div>';
+
+        $('btnDetailOpen').href = item.accessUrl || item.url || '#';
+        $('btnDetailTrack').textContent = item.tracked ? '取消收藏' : '收藏';
+    }
+
+    function daysLeftOf(deadline) {
+        if (!deadline) return null;
+        return Math.floor((new Date(deadline).getTime() - Date.now()) / 86400000);
+    }
+
+    function isExpired(deadline) {
+        return deadline ? new Date(deadline).getTime() < Date.now() : false;
+    }
+
+    function closeSheets() {
+        $('filterMask').classList.remove('show');
+        $('filterSheet').classList.remove('show');
+        $('detailSheet').classList.remove('show');
+    }
+
+    /* ---------------- 统计 ---------------- */
+    async function loadStats() {
+        try {
+            const stats = await api('/api/tenders/stats');
+            $('stTotal').textContent = stats.total ?? 0;
+            $('stOpen').textContent = stats.openCount ?? 0;
+            $('stNew').textContent = stats.newCount ?? 0;
+
+            const newCount = stats.newCount || 0;
+            const badge = $('newBadge');
+            badge.textContent = newCount;
+            badge.style.display = newCount > 0 ? '' : 'none';
+            $('chipNewDot').style.display = newCount > 0 ? '' : 'none';
+
+            const regions = stats.countByRegion || {};
+            const select = $('fRegion');
+            const current = select.value;
+            select.innerHTML = '<option value="">全部区县</option>' +
+                Object.keys(regions).map(r =>
+                    '<option value="' + escapeHtml(r) + '">' + escapeHtml(r) + '（' + regions[r] + '）</option>').join('');
+            select.value = current;
+
+            $('siteList').innerHTML = (stats.sites || []).map(s =>
+                '<div class="log-item"><div class="row1"><span>' + escapeHtml(s.siteName || s.siteCode) +
+                '</span><span class="time">' + (s.totalCount || 0) + ' 条</span></div>' +
+                '<div class="row2">' + (s.lastCrawlTime
+                    ? '最近采集 ' + escapeHtml(formatDate(s.lastCrawlTime)) + '（' + escapeHtml(s.lastCrawlStatus || '') + '）'
+                    : '尚未采集') + '</div></div>').join('');
+
+            const fi = await api('/api/keywords');
+            $('keywordInfo').innerHTML =
+                '标题词 <strong>' + fi.counts.title + '</strong> 个 · 正文词 <strong>' +
+                fi.counts.content + '</strong> 个 · 排除词 <strong>' +
+                fi.counts.exclude + '</strong> 个 · 自定义 <strong>' +
+                fi.counts.custom + '</strong> 个<br/>' +
+                '正文词会以「标题+正文」检索，能捞到标题没写但正文提到的公告。';
+        } catch (e) {
+            $('siteList').innerHTML = '加载失败：' + escapeHtml(e.message);
+        }
+    }
+
+    /* ---------------- 关键词维护 ---------------- */
+    const SCOPE_META = {
+        title: { label: '标题词', tip: '作为站内检索词（搜标题），并判定标题命中' },
+        content: { label: '正文词', tip: '以「标题+正文」检索，能捞到标题没写但正文提到的公告' },
+        exclude: { label: '排除词', tip: '标题命中即丢弃，用来过滤噪声' }
+    };
+
+    function normalizedKeyword(value) {
+        return String(value || '').replace(/\s+/g, '').toLowerCase();
+    }
+
+    async function loadKeywords() {
+        try {
+            const data = await api('/api/keywords');
+            $('kwCounts').textContent =
+                '标题 ' + data.counts.title + ' · 正文 ' + data.counts.content +
+                ' · 排除 ' + data.counts.exclude + ' · 自定义 ' + data.counts.custom;
+
+            $('kwGroups').innerHTML = ['title', 'content', 'exclude'].map(scope => {
+                const meta = SCOPE_META[scope];
+                const items = data[scope] || [];
+                const chips = items.map(item => {
+                    const hits = item.hits || 0;
+                    const hitsHtml = scope === 'exclude'
+                        ? '' : '<span class="hits ' + (hits === 0 ? 'zero' : '') + '">' + hits + '</span>';
+                    return '<span class="kw-chip ' + (item.custom ? 'custom' : '') + '" ' +
+                        'title="' + (item.custom ? '自定义' : '内置') + '">' +
+                        escapeHtml(item.keyword) + hitsHtml +
+                        '<button class="rm" data-kw="' + escapeHtml(item.keyword) + '" ' +
+                        'data-scope="' + scope.toUpperCase() + '" ' +
+                        'aria-label="删除">✕</button></span>';
+                }).join('');
+                return '<div class="kw-group">' +
+                    '<div class="kw-group-title">' + meta.label +
+                    '（' + items.length + '）<span class="tip">' + meta.tip + '</span></div>' +
+                    '<div>' + (chips || '<span class="muted">（空）</span>') + '</div>' +
+                    '</div>';
+            }).join('');
+        } catch (e) {
+            $('kwGroups').innerHTML = '<div class="empty">加载失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    async function loadScopes() {
+        try {
+            const scopes = await api('/api/keywords/scopes');
+            $('kwScope').innerHTML = scopes.map(s =>
+                '<option value="' + s.value + '">' + escapeHtml(s.label) + ' — ' +
+                escapeHtml(s.hint) + '</option>').join('');
+        } catch (e) {
+            $('kwScope').innerHTML = '<option value="TITLE">标题词</option>' +
+                '<option value="CONTENT">正文词</option>' +
+                '<option value="EXCLUDE">排除词</option>';
+        }
+    }
+
+    function showStatus(id, html) {
+        const el = $(id);
+        el.style.display = '';
+        el.innerHTML = html;
+    }
+
+    async function addKeyword() {
+        const keyword = $('kwInput').value.trim();
+        const scope = $('kwScope').value;
+        if (!keyword) {
+            toast('请先输入关键词');
+            return;
+        }
+        $('btnAddKeyword').disabled = true;
+        showStatus('kwAddResult', '正在添加…');
+        try {
+            const result = await api('/api/keywords?keyword=' + encodeURIComponent(keyword) +
+                '&scope=' + scope, { method: 'POST' });
+            $('kwInput').value = '';
+
+            // 立刻用新词表重扫已入库公告，看看历史数据里有没有命中
+            showStatus('kwAddResult', escapeHtml(result.message) + '，正在重扫已入库公告…');
+            const started = Date.now();
+            const rescan = await api('/api/keywords/rescan', { method: 'POST' });
+            const key = normalizedKeyword(keyword);
+            const hits = (rescan.perKeyword && rescan.perKeyword[key]) || 0;
+            const seconds = ((Date.now() - started) / 1000).toFixed(1);
+
+            showStatus('kwAddResult',
+                escapeHtml(result.message) + '<br/>已重扫 ' + rescan.processed + ' 条已入库公告（' +
+                seconds + 's），其中 <strong>' + hits + '</strong> 条命中「' + escapeHtml(keyword) + '」' +
+                (hits > 0
+                    ? '　<a href="javascript:void(0)" data-search="' + escapeHtml(keyword) + '">查看这几条 →</a>'
+                    : '<br/>库里暂时没有命中的公告，点下面「用当前词表采集」去站点抓新数据'));
+            toast('已添加：' + keyword);
+            loadKeywords();
+            loadStats();
+        } catch (e) {
+            showStatus('kwAddResult', '<span style="color:var(--danger)">添加失败：' +
+                escapeHtml(e.message) + '</span>');
+        } finally {
+            $('btnAddKeyword').disabled = false;
+        }
+    }
+
+    async function removeKeyword(keyword, scope) {
+        if (!confirm('确定要移除「' + keyword + '」吗？\n（内置词是停用，自定义词是删除）')) return;
+        try {
+            const result = await api('/api/keywords?keyword=' + encodeURIComponent(keyword) +
+                '&scope=' + scope, { method: 'DELETE' });
+            toast(result.message || '已移除');
+            loadKeywords();
+            loadStats();
+        } catch (e) {
+            toast('移除失败：' + e.message);
+        }
+    }
+
+    async function rescanKeywords() {
+        showStatus('kwRescanResult', '正在用当前词表重扫已入库公告…');
+        const started = Date.now();
+        try {
+            const rescan = await api('/api/keywords/rescan', { method: 'POST' });
+            const seconds = ((Date.now() - started) / 1000).toFixed(1);
+            const top = Object.entries(rescan.perKeyword || {})
+                .sort((a, b) => b[1] - a[1]).slice(0, 8)
+                .map(([k, v]) => '<span class="kw">' + escapeHtml(k) + ' ' + v + '</span>').join('');
+            showStatus('kwRescanResult',
+                '已处理 <strong>' + rescan.processed + '</strong> 条，更新 <strong>' + rescan.changed +
+                '</strong> 条，其中此前没有命中的 <strong>' + rescan.newlyMatched + '</strong> 条（' +
+                seconds + 's）' + (top ? '<br/>命中分布：' + top : ''));
+            toast('重扫完成，更新 ' + rescan.changed + ' 条');
+            loadKeywords();
+            loadList(true);
+        } catch (e) {
+            showStatus('kwRescanResult', '<span style="color:var(--danger)">重扫失败：' +
+                escapeHtml(e.message) + '</span>');
+        }
+    }
+
+    /** 跳到公告页并用某个关键词检索 */
+    function searchFor(keyword) {
+        $('keyword').value = keyword;
+        $('btnClearKeyword').style.display = '';
+        state.keyword = keyword;
+        state.onlyOpen = false;
+        state.onlyNew = false;
+        state.tracked = false;
+        syncChips();
+        switchTab('list');
+        loadList(true);
+    }
+
+    /* ---------------- 采集 ---------------- */
+    async function loadStatus() {
+        try {
+            const s = await api('/api/crawl/status');
+            const box = $('crawlStatus');
+            if (s.running) {
+                box.innerHTML = '<span class="running">● 正在采集</span>　' + escapeHtml(s.site || '') +
+                    '<br/>已发出请求 ' + s.requestCount + ' 次，开始于 ' + escapeHtml(formatDate(s.since));
+                $('btnCrawl').disabled = true;
+                startPolling();
+            } else {
+                $('btnCrawl').disabled = false;
+                stopPolling();
+                const last = s.lastSummary;
+                if (last) {
+                    const cls = last.status === 'FAILED' ? 'fail' : 'ok';
+                    box.innerHTML = '<span class="' + cls + '">' + escapeHtml(last.status) + '</span>　' +
+                        escapeHtml(last.message || '') + '<br/>' +
+                        '候选 ' + last.candidateCount + ' · 命中 ' + last.matchedCount +
+                        ' · 新增 ' + last.savedCount + ' · 重复 ' + last.duplicateCount +
+                        ' · 失败 ' + last.failedCount +
+                        '<br/>耗时 ' + (last.durationMs / 1000).toFixed(1) + ' 秒' +
+                        (last.verifiedCount ? ' · 已下架校验 ' + last.verifiedCount + ' 条' : '');
+                } else {
+                    box.textContent = '尚未执行采集。点上面的「开始采集」抓取数据。';
+                }
+            }
+        } catch (e) {
+            $('crawlStatus').textContent = '状态获取失败：' + e.message;
+        }
+    }
+
+    function startPolling() {
+        if (state.pollTimer) return;
+        state.pollTimer = setInterval(loadStatus, 2500);
+    }
+
+    function stopPolling() {
+        if (state.pollTimer) {
+            clearInterval(state.pollTimer);
+            state.pollTimer = null;
+        }
+    }
+
+    async function startCrawl() {
+        const params = new URLSearchParams();
+        params.set('site', $('crawlSite').value);
+        params.set('lookbackDays', $('crawlLookback').value);
+        const maxKeywords = $('maxKeywords').value;
+        if (maxKeywords) params.set('maxKeywords', maxKeywords);
+
+        $('btnCrawl').disabled = true;
+        $('crawlStatus').innerHTML = '<span class="running">● 正在启动采集…</span>';
+        try {
+            await api('/api/crawl/run?' + params.toString(), { method: 'POST' });
+            toast('采集已开始，可在本页查看进度');
+            startPolling();
+            loadStatus();
+        } catch (e) {
+            $('btnCrawl').disabled = false;
+            $('crawlStatus').innerHTML = '<span class="fail">启动失败：' + escapeHtml(e.message) + '</span>';
+        }
+    }
+
+    async function loadLogs() {
+        try {
+            const logs = await api('/api/crawl/logs?limit=20');
+            $('logList').innerHTML = logs.length ? logs.map(log =>
+                '<div class="log-item">' +
+                '<div class="row1"><span>' + escapeHtml(SITE_LABELS[log.siteCode] || log.siteCode) +
+                    ' <span class="badge ' + (log.status === 'FAILED' ? 'danger' : 'ok') + '">' +
+                    escapeHtml(log.status) + '</span></span>' +
+                    '<span class="time">' + (log.durationMs ? (log.durationMs / 1000).toFixed(1) + 's' : '-') + '</span></div>' +
+                '<div class="row2">' + escapeHtml(formatDate(log.startTime)) +
+                    ' · 候选 ' + (log.candidateCount ?? 0) + ' · 命中 ' + (log.matchedCount ?? 0) +
+                    ' · 新增 ' + (log.savedCount ?? 0) + ' · 重复 ' + (log.duplicateCount ?? 0) +
+                    ' · 失败 ' + (log.failedCount ?? 0) + '</div>' +
+                (log.errorMessage ? '<div class="row2" style="color:var(--danger)">' +
+                    escapeHtml(log.errorMessage) + '</div>' : '') +
+                '</div>').join('')
+                : '<div class="empty">暂无采集日志</div>';
+        } catch (e) {
+            $('logList').innerHTML = '加载失败：' + escapeHtml(e.message);
+        }
+    }
+
+    /* ---------------- Tab 切换 ---------------- */
+    function switchTab(tab) {
+        state.tab = tab;
+        document.querySelectorAll('.tabbar button').forEach(b =>
+            b.classList.toggle('active', b.dataset.tab === tab));
+        document.querySelectorAll('.panel').forEach(p =>
+            p.classList.toggle('active', p.id === 'panel-' + tab));
+        if (tab === 'crawl') { loadStatus(); loadStats(); }
+        if (tab === 'keywords') { loadKeywords(); }
+        if (tab === 'logs') loadLogs();
+        window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    }
+
+    /* ---------------- 事件绑定 ---------------- */
+    document.querySelectorAll('.tabbar button').forEach(button =>
+        button.addEventListener('click', () => switchTab(button.dataset.tab)));
+
+    // 卡片：点标题开详情，点星标收藏（事件委托，适配无限滚动追加的卡片）
+    $('cardList').addEventListener('click', event => {
+        const star = event.target.closest('[data-track]');
+        if (star) {
+            event.stopPropagation();
+            toggleTrack(Number(star.dataset.track), star);
+            return;
+        }
+        const open = event.target.closest('[data-open]');
+        if (open) openDetail(Number(open.dataset.open));
+    });
+
+    $('btnRefresh').addEventListener('click', () => {
+        loadStats(); loadList(true); loadStatus(); loadLogs();
+        toast('已刷新');
+    });
+
+    $('btnMarkRead').addEventListener('click', async () => {
+        try {
+            const result = await api('/api/tenders/mark-read', { method: 'POST' });
+            toast('已标记 ' + result.markedRead + ' 条为已读');
+            loadStats();
+            loadList(true);
+        } catch (e) {
+            toast('操作失败：' + e.message);
+        }
+    });
+
+    // 搜索：手机端输入防抖
+    let searchTimer = null;
+    $('keyword').addEventListener('input', event => {
+        const value = event.target.value.trim();
+        $('btnClearKeyword').style.display = value ? '' : 'none';
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            state.keyword = value;
+            loadList(true);
+        }, 400);
+    });
+    $('keyword').addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.target.blur();
+            state.keyword = event.target.value.trim();
+            loadList(true);
+        }
+    });
+    $('btnClearKeyword').addEventListener('click', () => {
+        $('keyword').value = '';
+        $('btnClearKeyword').style.display = 'none';
+        state.keyword = '';
+        loadList(true);
+    });
+
+    // chips
+    $('chips').addEventListener('click', event => {
+        const chip = event.target.closest('.chip');
+        if (!chip) return;
+        const filter = chip.dataset.filter;
+        if (filter === 'sortDeadline') {
+            state.sort = state.sort === 'deadline' ? 'publish' : 'deadline';
+            chip.classList.toggle('active', state.sort === 'deadline');
+            syncFilterSheet();
+            loadList(true);
+            return;
+        }
+        if (filter === 'all') {
+            state.onlyOpen = false;
+            state.onlyNew = false;
+            state.tracked = false;
+        } else {
+            state[filter] = !state[filter];
+        }
+        syncChips();
+        loadList(true);
+    });
+
+    function syncChips() {
+        document.querySelectorAll('.chip').forEach(chip => {
+            const filter = chip.dataset.filter;
+            if (filter === 'all') {
+                chip.classList.toggle('active',
+                    !state.onlyOpen && !state.onlyNew && !state.tracked);
+            } else if (filter === 'sortDeadline') {
+                chip.classList.toggle('active', state.sort === 'deadline');
+            } else {
+                chip.classList.toggle('active', !!state[filter]);
+            }
+        });
+    }
+
+    // 筛选抽屉
+    $('btnFilter').addEventListener('click', () => {
+        syncFilterSheet();
+        $('filterMask').classList.add('show');
+        $('filterSheet').classList.add('show');
+    });
+    $('btnCloseFilter').addEventListener('click', closeSheets);
+    $('filterMask').addEventListener('click', closeSheets);
+    $('btnCloseDetail').addEventListener('click', closeSheets);
+
+    $('btnApplyFilter').addEventListener('click', () => {
+        state.site = $('fSite').value;
+        state.region = $('fRegion').value;
+        state.from = $('fFrom').value;
+        state.to = $('fTo').value;
+        state.sort = $('fSort').value;
+        syncChips();
+        closeSheets();
+        loadList(true);
+        renderFilterSummary();
+    });
+
+    $('btnResetFilter').addEventListener('click', () => {
+        $('fSite').value = '';
+        $('fRegion').value = '';
+        $('fFrom').value = '';
+        $('fTo').value = '';
+        $('fSort').value = 'publish';
+        state.site = ''; state.region = ''; state.from = ''; state.to = ''; state.sort = 'publish';
+        syncChips();
+        closeSheets();
+        loadList(true);
+        renderFilterSummary();
+    });
+
+    function syncFilterSheet() {
+        $('fSite').value = state.site;
+        $('fRegion').value = state.region;
+        $('fFrom').value = state.from;
+        $('fTo').value = state.to;
+        $('fSort').value = state.sort;
+    }
+
+    function renderFilterSummary() {
+        const parts = [];
+        if (state.site) parts.push(SITE_LABELS[state.site] || state.site);
+        if (state.region) parts.push(state.region);
+        if (state.from) parts.push(state.from + ' 起');
+        if (state.to) parts.push(state.to + ' 止');
+        $('filterSummary').textContent = parts.length ? '· ' + parts.join(' · ') : '';
+    }
+
+    // 详情底部按钮
+    $('btnDetailTrack').addEventListener('click', () => {
+        if (state.currentDetail) {
+            const card = document.querySelector('[data-track="' + state.currentDetail.id + '"]');
+            if (card) toggleTrack(state.currentDetail.id, card);
+            else api('/api/tenders/' + state.currentDetail.id + '/track?tracked=' +
+                !state.currentDetail.tracked, { method: 'POST' })
+                .then(() => { state.currentDetail.tracked = !state.currentDetail.tracked;
+                    $('btnDetailTrack').textContent = state.currentDetail.tracked ? '取消收藏' : '收藏'; });
+        }
+    });
+
+    // 采集页按钮
+    $('btnCrawl').addEventListener('click', startCrawl);
+    $('btnExport').addEventListener('click', () => {
+        const params = queryString();
+        window.location.href = '/api/tenders/export.csv?' + params.toString();
+        toast('正在导出当前筛选结果…');
+    });
+
+    // 关键词页
+    $('btnAddKeyword').addEventListener('click', addKeyword);
+    $('kwInput').addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.target.blur(); addKeyword(); }
+    });
+    $('btnRescan').addEventListener('click', rescanKeywords);
+    $('btnReloadKw').addEventListener('click', async () => {
+        try {
+            const result = await api('/api/keywords/reload', { method: 'POST' });
+            toast('已重载内置词表：标题 ' + result.titleKeywordCount + ' / 正文 ' +
+                result.contentKeywordCount + ' / 排除 ' + result.excludeKeywordCount);
+            loadKeywords();
+            loadStats();
+        } catch (e) {
+            toast('重载失败：' + e.message);
+        }
+    });
+    $('btnCrawlWithKeywords').addEventListener('click', () => {
+        switchTab('crawl');
+        startCrawl();
+    });
+    $('btnGotoKeywords').addEventListener('click', () => {
+        switchTab('keywords');
+        loadKeywords();
+    });
+    // 删除关键词（事件委托）
+    $('kwGroups').addEventListener('click', event => {
+        const rm = event.target.closest('.rm');
+        if (rm) removeKeyword(rm.dataset.kw, rm.dataset.scope);
+    });
+    // "查看这几条 →"
+    $('kwAddResult').addEventListener('click', event => {
+        const link = event.target.closest('[data-search]');
+        if (link) searchFor(link.dataset.search);
+    });
+
+    // 左右滑动关闭详情（手机端常见手势）
+    let touchStartX = 0;
+    $('detailSheet').addEventListener('touchstart', event => {
+        touchStartX = event.touches[0].clientX;
+    }, { passive: true });
+    $('detailSheet').addEventListener('touchend', event => {
+        const delta = event.changedTouches[0].clientX - touchStartX;
+        if (delta > 90) closeSheets();
+    }, { passive: true });
+
+    /* ---------------- 应用设置 ---------------- */
+    function fillHourOptions() {
+        const select = $('setScheduleHour');
+        let html = '';
+        for (let hour = 0; hour < 24; hour++) {
+            const label = (hour < 10 ? '0' + hour : hour) + ':00';
+            html += '<option value="' + hour + '">' + label + '</option>';
+        }
+        select.innerHTML = html;
+    }
+
+    async function loadAppSettings() {
+        fillHourOptions();
+        try {
+            const s = await api('/api/app/settings');
+            $('setScheduleEnabled').value = String(s.scheduleEnabled);
+            $('setScheduleHour').value = String(s.scheduleHour);
+            $('setLookback').value = String(s.lookbackDays);
+            $('setFetchDetail').value = String(s.fetchDetail);
+            $('setVerifyLink').value = String(s.verifyLink);
+            $('appInfo').innerHTML = '数据库：' + escapeHtml(s.dbPath) +
+                '<br/>放宽证书校验的域名：' + escapeHtml((s.insecureHosts || []).join('、')) +
+                '<br/>提示：采集时会在通知栏显示进度，可以在应用外自动跑完。';
+        } catch (e) {
+            $('appInfo').textContent = '设置读取失败：' + e.message;
+        }
+    }
+
+    async function saveAppSettings() {
+        const params = new URLSearchParams();
+        params.set('scheduleEnabled', $('setScheduleEnabled').value);
+        params.set('scheduleHour', $('setScheduleHour').value);
+        params.set('lookbackDays', $('setLookback').value);
+        params.set('fetchDetail', $('setFetchDetail').value);
+        params.set('verifyLink', $('setVerifyLink').value);
+        try {
+            await api('/api/app/settings?' + params.toString(), { method: 'POST' });
+            const enabled = $('setScheduleEnabled').value === 'true';
+            $('settingsResult').style.display = '';
+            $('settingsResult').innerHTML = '设置已保存：定时采集' + (enabled
+                ? '已开启，每天 ' + $('setScheduleHour').value + ':00 自动采集'
+                : '已关闭，可在上方手动采集');
+            toast('设置已保存');
+        } catch (e) {
+            toast('保存失败：' + e.message);
+        }
+    }
+
+    function bindAppSettings() {
+        $('btnSaveSettings').addEventListener('click', saveAppSettings);
+        $('btnBattery').addEventListener('click', () => {
+            if (window.AndroidApp && window.AndroidApp.openBatterySettings) {
+                window.AndroidApp.openBatterySettings();
+            } else {
+                toast('请到 系统设置 → 应用 → 电池 中允许后台运行');
+            }
+        });
+    }
+
+    /* ---------------- 初始化 ---------------- */
+    syncChips();
+    loadScopes();
+    loadAppSettings();
+    bindAppSettings();
+    loadStats();
+    loadList(true);
+    loadStatus();
+    loadLogs();
+    loadKeywords();
+    api('/api/crawl/status').then(s => { if (s.running) startPolling(); }).catch(() => {});
+</script>
+</body>
+</html>

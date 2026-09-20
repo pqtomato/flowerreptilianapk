@@ -1,0 +1,47 @@
+        <div class="section">
+            <h2>应用设置</h2>
+            <div class="field">
+                <label>定时采集</label>
+                <select id="setScheduleEnabled">
+                    <option value="true">开启（每天自动采集）</option>
+                    <option value="false">关闭（只手动采集）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>每天几点采集</label>
+                <select id="setScheduleHour"></select>
+            </div>
+            <div class="field">
+                <label>采集时间窗口</label>
+                <select id="setLookback">
+                    <option value="7">最近 7 天</option>
+                    <option value="30">最近 30 天（推荐）</option>
+                    <option value="90">最近 90 天</option>
+                    <option value="0">不限（首次建库，较慢）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>抓取详情页正文</label>
+                <select id="setFetchDetail">
+                    <option value="true">抓取（内容完整，较慢）</option>
+                    <option value="false">不抓取（快约 5 倍，用接口自带正文）</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>已下架公告校验</label>
+                <select id="setVerifyLink">
+                    <option value="true">开启（避免点开是死链）</option>
+                    <option value="false">关闭（更快）</option>
+                </select>
+            </div>
+            <button class="btn" id="btnSaveSettings">保存设置</button>
+            <div class="status-line" id="settingsResult" style="display:none"></div>
+
+            <div class="hint" style="margin-top:12px">
+                <strong>后台自运行必读：</strong>安卓系统（尤其小米 / 华为 / OPPO / vivo）会限制后台任务，
+                需要手动允许本应用<b>自启动</b>与<b>后台运行</b>，并加入<b>电池优化白名单</b>，
+                否则定时采集不会执行 —— 这不是应用的问题，是系统策略。<br/>
+                <a href="javascript:void(0)" id="btnBattery">点此打开电池优化设置 →</a>
+            </div>
+            <div class="hint" id="appInfo" style="margin-top:10px"></div>
+        </div>

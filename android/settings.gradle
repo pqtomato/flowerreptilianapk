@@ -1,0 +1,27 @@
+// 花卉招标监控 · 安卓版
+// 仓库根目录下的 Spring Boot 工程为旧版（已停用），保留仅作参考。
+pluginManagement {
+    repositories {
+        // 国内优先走阿里云镜像，避免 dl.google.com 偶发抽风
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "FlowerTender"
+include ':app'
+include ':core'

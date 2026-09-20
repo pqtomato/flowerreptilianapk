@@ -16,3 +16,46 @@ bin-release/
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
+
+# ---------------- Java / Maven ----------------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+
+# ---------------- IDE ----------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# ---------------- 采集运行时数据（旧版 H2 数据库文件）----------------
+data/
+*.mv.db
+*.trace.db
+
+# ---------------- 安卓工程（android/）----------------
+android/.gradle/
+android/build/
+android/app/build/
+android/core/build/
+android/.idea/
+android/captures/
+# 与机器相关的 SDK 路径，不入库
+android/local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+.cxx/
+
+# ---------------- 系统文件 ----------------
+.DS_Store
+Thumbs.db
+

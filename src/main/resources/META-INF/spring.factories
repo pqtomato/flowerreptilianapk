@@ -1,0 +1,4 @@
+# 在 Spring 容器创建 Bean 之前处理 HTTPS 主机名校验开关
+# （JDK HttpClient 的该开关是 JVM 级静态开关，必须提前设置）
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.wanhong.crawler.config.HostnameVerificationInitializer
