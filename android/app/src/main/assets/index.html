@@ -156,6 +156,8 @@
         .badge.est { background: #eef1ef; color: var(--muted); font-weight: 400; }
         /* 预算金额：用主色的浅底，比"剩余天数"低调、但比灰色徽标显眼 */
         .badge.money { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
+        /* 风险提示：用警示色，别混在普通说明里被略过 */
+        .warn-text { color: var(--warn); }
 
         .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
         .keywords { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1671,8 +1673,13 @@
             $('setVerifyLink').value = String(s.verifyLink);
             $('setReminderEnabled').value = String(s.reminderEnabled);
             $('setReminderDays').value = String(s.reminderDays);
-            $('appInfo').innerHTML = '数据库：' + escapeHtml(s.dbPath) +
+            $('appInfo').innerHTML = '版本：' + escapeHtml(s.versionName || '?') +
+                '（build ' + escapeHtml(String(s.versionCode || '?')) + '）' +
+                '<br/>数据库：' + escapeHtml(s.dbPath) +
                 '<br/>放宽证书校验的域名：' + escapeHtml((s.insecureHosts || []).join('、')) +
+                '<br/><span class="warn-text">这些域名不校验 HTTPS 证书 —— ' +
+                '中标信息本身不是机密，但链路上被篡改的内容可能被当成真的，' +
+                '重要公告请以浏览器打开的原文为准。</span>' +
                 '<br/>提示：采集时会在通知栏显示进度，可以在应用外自动跑完。';
         } catch (e) {
             $('appInfo').textContent = '设置读取失败：' + e.message;

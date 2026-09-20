@@ -1,0 +1,33 @@
+# 换行统一在仓库里存 LF。
+#
+# 为什么需要它：本机 core.autocrlf=true（工作区 CRLF、仓库 LF），
+# 但换一台机器或换系统 clone 时，如果对方 autocrlf=false，
+# 检出的换行就不一样，会表现为"整个仓库都改了"的假 diff。
+# 声明 text=auto 后这个行为由仓库决定，不再依赖每个人的 git 配置。
+#
+# 注意：这里**不写 eol=lf**，否则工作区会被强制成 LF，
+# 当前已检出为 CRLF 的文件会全部显示为已修改。
+* text=auto
+
+# Windows 批处理对换行敏感（goto / 标签解析），强制 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制：禁止任何换行与编码转换
+*.apk binary
+*.aab binary
+*.jar binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.so binary
+*.dex binary
+*.keystore binary
+*.jks binary
+*.zstd binary

@@ -426,6 +426,19 @@ cd android
 > Linux / macOS 把 `.\gradlew.bat` 换成 `./gradlew`。
 > 用 Android Studio 打开 `android/` 目录即可（它会识别为 Gradle 工程，可直接运行到手机）。
 
+### 改完先跑一遍自检
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\verify.ps1
+```
+
+一条命令跑完三关：**页面静态自检 → 96 个内核单测 → release 打包**。
+接 CI（Gitee Go / GitHub Actions）时也调这一个脚本，免得 CI 里再抄一遍命令、抄漏步骤。
+只改了 core 逻辑想快速验证时加 `-SkipBuild`。
+
+> `tools/verify.ps1` 和 `tools/emulator-log-monitor.ps1` **必须存成 UTF-8 带 BOM**：
+> Windows PowerShell 5.1 会把无 BOM 的 .ps1 按 GBK 解码，中文注释会把语法撑坏。
+
 > 国内网络下构建：`settings.gradle` 已把阿里云镜像放在最前面；Gradle 发行包走 wrapper 里的腾讯云镜像，正常能拉动依赖。
 
 ---
@@ -525,7 +538,9 @@ cd android
   306 万 → 306 万 → 60 万 → 60 万 → 57.4 万 → 9.5 万 → 无金额垫底；
 - **数据清理在真机上验证过**：6 条已截止里把 1 条设为收藏后，
   可清理数正确变为 **5**；执行清理删 5 条、总数 28 → 23，
-  **收藏的那条存活**，占用 630 KB → 480 KB（`VACUUM` 生效）。
+  **收藏的那条存活**，占用 630 KB → 480 KB（`VACUUM` 生效）；
+- **详情页在真机上验证过**：金额 / 最高限价 / 项目编号字段正确显示，
+  5 个操作按钮排成两列网格；「复制链接」走原生剪贴板成功（出现「已复制」提示、无异常）。
 
 > 这一轮实测**抓出一个必现闪退**：一点「开始采集」就崩
 > （`InvalidForegroundServiceTypeException: Starting FGS with type none`）。
@@ -538,6 +553,17 @@ cd android
 - 真机（尤其是小米 / 华为 / OPPO 等国产 ROM）上的界面渲染与后台存活；
 - 定时任务在具体机型 ROM 上的实际执行情况（受各家省电策略影响很大）；
 - 通知在真机 Android 13/14 上的展示细节（模拟器上只能确认通知已挂出）。
+
+### 工程约定
+
+- **版本号每次打包递增**（`android/app/build.gradle` 的 `versionCode`/`versionName`），
+  「应用设置」里会显示 `版本：1.1（build 2）`。手机上装了新版却分不清是哪一版，
+  出问题时连"你装的是哪个包"都问不清楚。
+- **`.gitattributes` 统一换行**：仓库里存 LF，工作区换行交给 `core.autocrlf`。
+  不声明的话，换一台机器或换系统 clone 时对方的 `autocrlf` 设置不同，
+  会表现为"整个仓库都改了"的假 diff。`*.bat` 强制 CRLF（批处理对换行敏感），
+  二进制扩展名一律 `binary`。
+- **`android/local.properties` 不入库**（与机器相关）；`logs/` 也不入库。
 
 装到手机上后如果哪里不对，用这个抓日志发我，定位很快：
 

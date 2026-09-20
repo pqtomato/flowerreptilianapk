@@ -10,8 +10,10 @@ android {
         applicationId 'com.wanhong.tender'
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        // 每打一次包就往上加：手机里装了新版也分不清是哪一版，
+        // 出问题时连"你装的是哪个包"都问不清楚。「应用设置」里会显示这两个值。
+        versionCode 2
+        versionName '1.1'
         // 手机本地自运行：不需要多语言资源，锁定中文
         resConfigs 'zh', 'en'
     }

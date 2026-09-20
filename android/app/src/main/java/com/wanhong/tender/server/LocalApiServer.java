@@ -1,6 +1,7 @@
 package com.wanhong.tender.server;
 
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -384,6 +385,32 @@ public class LocalApiServer extends NanoHTTPD {
         return bytes;
     }
 
+    /**
+     * 版本号：让"手机上装的是哪一版"可直接读出来。
+     *
+     * <p>用 PackageManager 而不是 BuildConfig —— gradle.properties 里关掉了
+     * buildConfig 生成（`android.defaults.buildfeatures.buildconfig=false`）。
+     */
+    private String appVersionName() {
+        try {
+            return context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private long appVersionCode() {
+        try {
+            android.content.pm.PackageInfo info = context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? info.getLongVersionCode() : info.versionCode;
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
     private Map<String, Object> appSettings() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("scheduleEnabled", holder.isScheduleEnabled());
@@ -394,6 +421,8 @@ public class LocalApiServer extends NanoHTTPD {
         map.put("reminderEnabled", holder.isReminderEnabled());
         map.put("reminderDays", holder.getReminderDays());
         map.put("retentionDays", holder.getRetentionDays());
+        map.put("versionName", appVersionName());
+        map.put("versionCode", appVersionCode());
         map.put("insecureHosts", holder.transport.insecureHosts());
         map.put("dbPath", context.getDatabasePath(com.wanhong.tender.data.TenderDbHelper.DB_NAME).getAbsolutePath());
         return map;
