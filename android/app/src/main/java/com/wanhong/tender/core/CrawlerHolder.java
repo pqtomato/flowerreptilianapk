@@ -86,7 +86,7 @@ public final class CrawlerHolder {
         });
         this.keywordRules.reload();
 
-        EpointSearchClient searchClient = new EpointSearchClient(fetcher, new ObjectMapper(),
+        EpointSearchClient searchClient = new EpointSearchClient(fetcher, com.wanhong.crawler.pipeline.Json.mapper(),
                 new EpointSearchClient.Logger() {
                     public void warn(String message) {
                         Log.w(TAG, message);
@@ -107,7 +107,7 @@ public final class CrawlerHolder {
         crawlers.add(new WyxmzxCrawler(settings, searchClient));
 
         this.engine = new CrawlEngine(settings, crawlers, keywordRules, repository, fetcher,
-                detailParser, deadlineExtractor, linkVerifier, new ObjectMapper(),
+                detailParser, deadlineExtractor, linkVerifier, com.wanhong.crawler.pipeline.Json.mapper(),
                 new CrawlEngine.Logger() {
                     public void info(String message) {
                         Log.i(TAG, message);
@@ -204,3 +204,4 @@ public final class CrawlerHolder {
         return Arrays.asList(AqggzyCrawler.SITE_CODE, CgjCrawler.SITE_CODE, WyxmzxCrawler.SITE_CODE);
     }
 }
+

@@ -40,7 +40,7 @@ public class LocalApiServer extends NanoHTTPD {
 
     private final Context context;
     private final CrawlerHolder holder;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = com.wanhong.crawler.pipeline.Json.mapper();
 
     public LocalApiServer(Context context) {
         super("127.0.0.1", PORT);
@@ -151,7 +151,7 @@ public class LocalApiServer extends NanoHTTPD {
         if ("/api/crawl/logs".equals(uri)) {
             List<Map<String, Object>> list = new ArrayList<>();
             for (CrawlLogRecord log : holder.repository.recentLogs(intParam(params, "limit", 20))) {
-                list.add(logToMap(log, false));
+                list.add(TenderQueryService.toLogItem(log, siteName(log.siteCode), false));
             }
             return json(list);
         }
@@ -161,7 +161,7 @@ public class LocalApiServer extends NanoHTTPD {
             if (log == null) {
                 return error(Response.Status.NOT_FOUND, "日志不存在：" + id);
             }
-            return json(logToMap(log, true));
+            return json(TenderQueryService.toLogItem(log, siteName(log.siteCode), true));
         }
         if ("/api/crawl/sites".equals(uri)) {
             return json(siteStatuses());
@@ -290,53 +290,12 @@ public class LocalApiServer extends NanoHTTPD {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("running", holder.engine.isRunning());
         status.put("site", holder.engine.getRunningSite());
+        status.put("since", holder.engine.getRunningSince());
         status.put("requestCount", holder.fetcher.getRequestCount());
         CrawlSummary last = holder.engine.getLastSummary();
-        status.put("lastSummary", last == null ? null : summaryToMap(last));
+        status.put("lastSummary", last == null ? null : TenderQueryService.toSummaryItem(last));
         status.put("insecureHosts", holder.transport.insecureHosts());
         return status;
-    }
-
-    private Map<String, Object> summaryToMap(CrawlSummary summary) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("status", summary.status);
-        map.put("message", summary.message);
-        map.put("triggerType", summary.triggerType);
-        map.put("candidateCount", summary.candidateCount);
-        map.put("excludedCount", summary.excludedCount);
-        map.put("matchedCount", summary.matchedCount);
-        map.put("savedCount", summary.savedCount);
-        map.put("duplicateCount", summary.duplicateCount);
-        map.put("failedCount", summary.failedCount);
-        map.put("verifiedCount", summary.verifiedCount);
-        map.put("requestCount", summary.requestCount);
-        map.put("durationMs", summary.durationMs);
-        return map;
-    }
-
-    private Map<String, Object> logToMap(CrawlLogRecord log, boolean withDetail) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", log.id);
-        map.put("siteCode", log.siteCode);
-        map.put("siteName", siteName(log.siteCode));
-        map.put("triggerType", log.triggerType);
-        map.put("status", log.status);
-        map.put("startTime", log.startTime);
-        map.put("endTime", log.endTime);
-        map.put("durationMs", log.durationMs);
-        map.put("candidateCount", log.candidateCount);
-        map.put("excludedCount", log.excludedCount);
-        map.put("matchedCount", log.matchedCount);
-        map.put("savedCount", log.savedCount);
-        map.put("duplicateCount", log.duplicateCount);
-        map.put("failedCount", log.failedCount);
-        map.put("requestCount", log.requestCount);
-        map.put("verifiedCount", log.verifiedCount);
-        map.put("errorMessage", log.errorMessage);
-        if (withDetail) {
-            map.put("detail", log.detail);
-        }
-        return map;
     }
 
     private Map<String, Object> appSettings() {
@@ -480,6 +439,7 @@ public class LocalApiServer extends NanoHTTPD {
         return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
     }
 }
+
 
 
 

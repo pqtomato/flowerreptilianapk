@@ -132,7 +132,7 @@ android/
         └── res/             图标、主题、字符串
 ```
 
-### 两个关键设计
+### 三个关键设计
 
 1. **采集内核与平台解耦**。内核只依赖一个 `HttpTransport` 接口和 `TenderRepository` 接口：
    - 安卓：`OkHttpTransport` + SQLite；
@@ -145,6 +145,13 @@ android/
    本地 HTTP 服务（NanoHTTPD）提供同样的 REST 接口，WebView 指向它 ——
    **页面代码一行没改**。附带好处：你也可以用手机浏览器直接打开 `http://127.0.0.1:8765`
    查看（App 在前台运行时）。
+
+3. **所有 JSON 输出统一走 `Json.mapper()`**（`android/core/.../pipeline/Json.java`）。
+   这不是风格问题而是必须的：安卓上直接 `new ObjectMapper()` **不带 JavaTimeModule**，
+   序列化 `java.time.LocalDateTime` 会直接抛
+   `Java 8 date/time type 'java.time.LocalDateTime' not supported by default`，
+   接口全部 500。旧版跑在 Spring Boot 上时 Spring 自动注册了该模块，所以移植时没暴露 ——
+   真机上一次就踩到了。`JsonSerializationTest` 现在专门盯着这个行为。
 
 ### 证书问题（三个站点都有）
 

@@ -72,6 +72,7 @@ public class CrawlEngine {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile String runningSite;
+    private volatile LocalDateTime runningSince;
     private volatile CrawlSummary lastSummary;
 
     public CrawlEngine(CrawlerSettings settings,
@@ -104,6 +105,11 @@ public class CrawlEngine {
         return runningSite;
     }
 
+    /** 本次采集的开始时间（页面显示“开始于 …”） */
+    public LocalDateTime getRunningSince() {
+        return runningSince;
+    }
+
     public CrawlSummary getLastSummary() {
         return lastSummary;
     }
@@ -117,6 +123,7 @@ public class CrawlEngine {
             return CrawlSummary.of("BUSY", "已有采集任务正在执行：" + runningSite);
         }
         this.runningSite = (siteCode == null || siteCode.trim().isEmpty()) ? "all" : siteCode;
+        this.runningSince = LocalDateTime.now();
         try {
             CrawlSummary summary = doCrawl(siteCode, maxKeywords, lookbackDays, triggerType, listener);
             this.lastSummary = summary;
@@ -124,6 +131,7 @@ public class CrawlEngine {
         } finally {
             running.set(false);
             runningSite = null;
+            runningSince = null;
         }
     }
 

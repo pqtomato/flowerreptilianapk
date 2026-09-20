@@ -199,4 +199,59 @@ public class TenderQueryService {
         }
         return list;
     }
+
+    /**
+     * 采集日志的接口视图。
+     *
+     * <p>放在内核里而不是散在安卓的服务层，是为了能被单元测试覆盖 ——
+     * 日志里的时间字段正是当初"安卓上序列化 LocalDateTime 报错"的地方。
+     *
+     * @param siteName  站点中文名（由宿主解析后传入，内核不认识 UI 文案）
+     * @param withDetail 是否带逐条明细
+     */
+    public static Map<String, Object> toLogItem(CrawlLogRecord log, String siteName, boolean withDetail) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", log.id);
+        map.put("siteCode", log.siteCode);
+        map.put("siteName", siteName);
+        map.put("triggerType", log.triggerType);
+        map.put("status", log.status);
+        map.put("startTime", log.startTime);
+        map.put("endTime", log.endTime);
+        map.put("durationMs", log.durationMs);
+        map.put("candidateCount", log.candidateCount);
+        map.put("excludedCount", log.excludedCount);
+        map.put("matchedCount", log.matchedCount);
+        map.put("savedCount", log.savedCount);
+        map.put("duplicateCount", log.duplicateCount);
+        map.put("failedCount", log.failedCount);
+        map.put("requestCount", log.requestCount);
+        map.put("verifiedCount", log.verifiedCount);
+        map.put("errorMessage", log.errorMessage);
+        if (withDetail) {
+            map.put("detail", log.detail);
+        }
+        return map;
+    }
+
+    /** 采集结果的接口视图 */
+    public static Map<String, Object> toSummaryItem(CrawlSummary summary) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (summary == null) {
+            return map;
+        }
+        map.put("status", summary.status);
+        map.put("message", summary.message);
+        map.put("triggerType", summary.triggerType);
+        map.put("candidateCount", summary.candidateCount);
+        map.put("excludedCount", summary.excludedCount);
+        map.put("matchedCount", summary.matchedCount);
+        map.put("savedCount", summary.savedCount);
+        map.put("duplicateCount", summary.duplicateCount);
+        map.put("failedCount", summary.failedCount);
+        map.put("verifiedCount", summary.verifiedCount);
+        map.put("requestCount", summary.requestCount);
+        map.put("durationMs", summary.durationMs);
+        return map;
+    }
 }
