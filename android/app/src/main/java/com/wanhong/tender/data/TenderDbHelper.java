@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import com.wanhong.crawler.common.NoticeType;
+import com.wanhong.crawler.crawler.BudgetExtractor;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,8 +24,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
     /**
      * v2：新增 notice_type（公告类型），用于默认过滤掉"成交 / 合同"这类非可投公告
      * v3：订正数据 —— 清掉非可投公告上已经存进去的"估算截止日"
+     * v4：新增 budget_yuan / budget_cap_text / project_code（预算金额、最高限价原文、项目编号）
      */
-    public static final int DB_VERSION = 3;
+    public static final int DB_VERSION = 4;
 
     public static final String TABLE_TENDER = "tender";
     public static final String TABLE_KEYWORD = "crawler_keyword";
@@ -60,6 +62,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
                 + "attachments TEXT,"
                 + "also_found_on TEXT,"
                 + "notice_type TEXT,"
+                + "budget_yuan INTEGER,"
+                + "budget_cap_text TEXT,"
+                + "project_code TEXT,"
                 + "is_new INTEGER NOT NULL DEFAULT 1,"
                 + "tracked INTEGER NOT NULL DEFAULT 0,"
                 + "removed INTEGER NOT NULL DEFAULT 0,"
@@ -116,6 +121,56 @@ public class TenderDbHelper extends SQLiteOpenHelper {
         }
         if (oldVersion < 3) {
             clearEstimatedDeadlineForNonBiddable(db);
+        }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN budget_yuan INTEGER");
+            db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN budget_cap_text TEXT");
+            db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN project_code TEXT");
+            backfillBudget(db);
+        }
+    }
+
+    /**
+     * v3 → v4 迁移：从已经入库的正文里补出「预算金额 / 最高限价 / 项目编号」。
+     *
+     * <p>不回填的话老数据全是 NULL，列表上既看不到金额、按预算排序也排不出来 ——
+     * 这次改动对已有数据等于没生效。正文都在库里，重跑一遍正则即可，不用重新采集。
+     */
+    private void backfillBudget(SQLiteDatabase db) {
+        BudgetExtractor extractor = new BudgetExtractor();
+        Map<Long, BudgetExtractor.Budget> parsed = new HashMap<>();
+        Cursor cursor = db.rawQuery(
+                "SELECT id, content, summary FROM " + TABLE_TENDER, null);
+        try {
+            while (cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                String content = cursor.getString(1);
+                String summary = cursor.getString(2);
+                // 与爬虫同一口径：优先正文，没有正文才退回摘要
+                String text = (content != null && !content.trim().isEmpty()) ? content : summary;
+                BudgetExtractor.Budget budget = extractor.extract(text);
+                if (budget.amountYuan() != null || budget.projectCode() != null || budget.capText() != null) {
+                    parsed.put(id, budget);
+                }
+            }
+        } finally {
+            cursor.close();
+        }
+        for (Map.Entry<Long, BudgetExtractor.Budget> entry : parsed.entrySet()) {
+            BudgetExtractor.Budget budget = entry.getValue();
+            ContentValues values = new ContentValues();
+            if (budget.amountYuan() != null) {
+                values.put("budget_yuan", budget.amountYuan());
+            }
+            if (budget.capText() != null) {
+                values.put("budget_cap_text", budget.capText());
+            }
+            if (budget.projectCode() != null) {
+                values.put("project_code", budget.projectCode());
+            }
+            if (values.size() > 0) {
+                db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(entry.getKey())});
+            }
         }
     }
 

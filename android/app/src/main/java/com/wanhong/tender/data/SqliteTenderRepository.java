@@ -88,13 +88,35 @@ public class SqliteTenderRepository implements TenderRepository {
     @Override
     public List<TenderRecord> query(TenderQuery query, int limit, int offset) {
         Where where = buildWhere(query);
-        String order = query != null && query.sortByDeadline()
-                // 截止时间升序：最紧急的排最前；没有截止日期的排最后
-                ? " ORDER BY (deadline_date IS NULL), deadline_date ASC, publish_date DESC"
-                : " ORDER BY publish_date DESC, id DESC";
+        List<String> args = new ArrayList<>();
+        if (where.args != null) {
+            for (String arg : where.args) {
+                args.add(arg);
+            }
+        }
+        String order;
+        if (query != null && query.sortByBudget()) {
+            // 预算从高到低：没有金额的排最后。
+            // 用 (budget_yuan IS NULL) 当第一排序键而不是 NULLS LAST ——
+            // 后者要 SQLite 3.30+，不同 ROM 带的版本不一致。
+            order = " ORDER BY (budget_yuan IS NULL), budget_yuan DESC, publish_date DESC";
+        } else if (query != null && query.sortByDeadline()) {
+            // 未截止的按截止升序在前（最紧急的先看到），已截止的整档垫后；
+            // 同一个"已截止不该打头"的口径，与通知里的排序保持一致。
+            // 时间用 ? 占位而不是 SQLite 的 datetime('now')：库里存的是 ISO 串（带 T，
+            // 还有秒的小数位），和 datetime 的格式不能直接比字典序。
+            String now = iso(LocalDateTime.now());
+            order = " ORDER BY (deadline_date IS NULL), (deadline_date < ?) ASC,"
+                    + " CASE WHEN deadline_date >= ? THEN deadline_date END ASC,"
+                    + " deadline_date DESC, publish_date DESC";
+            args.add(now);
+            args.add(now);
+        } else {
+            order = " ORDER BY publish_date DESC, id DESC";
+        }
         String sql = "SELECT * FROM " + TenderDbHelper.TABLE_TENDER + where.sql + order
                 + " LIMIT " + Math.max(0, limit) + " OFFSET " + Math.max(0, offset);
-        return queryList(sql, where.args);
+        return queryList(sql, args.toArray(new String[0]));
     }
 
     @Override
@@ -313,6 +335,9 @@ public class SqliteTenderRepository implements TenderRepository {
         v.put("notice_type", r.noticeType != null && !r.noticeType.isEmpty()
                 ? r.noticeType
                 : com.wanhong.crawler.common.NoticeType.classify(r.category, r.title));
+        v.put("budget_yuan", r.budgetYuan);
+        v.put("budget_cap_text", r.budgetCapText);
+        v.put("project_code", r.projectCode);
         v.put("is_new", r.isNew ? 1 : 0);
         v.put("tracked", r.tracked ? 1 : 0);
         v.put("removed", r.removed ? 1 : 0);
@@ -348,6 +373,10 @@ public class SqliteTenderRepository implements TenderRepository {
         r.attachments = c.getString(c.getColumnIndexOrThrow("attachments"));
         r.alsoFoundOn = c.getString(c.getColumnIndexOrThrow("also_found_on"));
         r.noticeType = c.getString(c.getColumnIndexOrThrow("notice_type"));
+        int budgetIndex = c.getColumnIndex("budget_yuan");
+        r.budgetYuan = (budgetIndex < 0 || c.isNull(budgetIndex)) ? null : c.getLong(budgetIndex);
+        r.budgetCapText = c.getString(c.getColumnIndexOrThrow("budget_cap_text"));
+        r.projectCode = c.getString(c.getColumnIndexOrThrow("project_code"));
         r.isNew = c.getInt(c.getColumnIndexOrThrow("is_new")) == 1;
         r.tracked = c.getInt(c.getColumnIndexOrThrow("tracked")) == 1;
         r.removed = c.getInt(c.getColumnIndexOrThrow("removed")) == 1;

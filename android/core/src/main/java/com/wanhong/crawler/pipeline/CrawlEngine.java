@@ -5,6 +5,7 @@ import com.wanhong.crawler.common.Hashing;
 import com.wanhong.crawler.common.NoticeType;
 import com.wanhong.crawler.common.RegionNames;
 import com.wanhong.crawler.config.CrawlerSettings;
+import com.wanhong.crawler.crawler.BudgetExtractor;
 import com.wanhong.crawler.crawler.DeadlineExtractor;
 import com.wanhong.crawler.crawler.DetailParser;
 import com.wanhong.crawler.crawler.SiteCrawler;
@@ -60,6 +61,8 @@ public class CrawlEngine {
 
     private static final int MAX_SUMMARY_LENGTH = 2000;
     private static final int MAX_KEYWORDS_LENGTH = 500;
+    /** 无状态，直接共享一个实例；不必塞进构造函数参数列表里 */
+    private static final BudgetExtractor BUDGET_EXTRACTOR = new BudgetExtractor();
 
     private final CrawlerSettings settings;
     private final List<SiteCrawler> crawlers;
@@ -395,6 +398,7 @@ public class CrawlEngine {
 
         applyDeadline(record);
         record.region = resolveRegion(record);
+        applyBudget(record);
 
         Set<String> hits = new LinkedHashSet<>(titleMatch.keywords());
         hits.addAll(summaryMatch.keywords());
@@ -476,6 +480,10 @@ public class CrawlEngine {
             applyDeadline(existing);
             changed = true;
         }
+        // 正文补齐后顺带补金额 / 项目编号（老数据，或首次采集时没抓到正文的）
+        if (applyBudget(existing)) {
+            changed = true;
+        }
         String region = resolveRegion(existing);
         if (region != null && !region.trim().isEmpty() && !region.equals(existing.region)) {
             existing.region = region;
@@ -506,6 +514,39 @@ public class CrawlEngine {
         record.deadlineDate = deadline.date();
         record.deadlineEstimated = deadline.estimated();
         record.deadlineSource = truncate(deadline.source(), 64);
+    }
+
+    /**
+     * 从正文里抠「预算金额 / 项目编号 / 最高限价」。
+     *
+     * <p>已经有金额和编号就不再重跑正则 —— 重复采集时会走到这里，
+     * 每次都解析一遍纯属浪费（正文可能上万字）。
+     *
+     * @return 是否填入了新值（重复采集路径据此决定要不要写库）
+     */
+    private boolean applyBudget(TenderRecord record) {
+        if (record.hasBudget() && record.projectCode != null) {
+            return false;
+        }
+        String text = record.hasContent() ? record.content : record.summary;
+        if (text == null || text.trim().isEmpty()) {
+            return false;
+        }
+        BudgetExtractor.Budget budget = BUDGET_EXTRACTOR.extract(text);
+        boolean changed = false;
+        if (budget.amountYuan() != null && !record.hasBudget()) {
+            record.budgetYuan = budget.amountYuan();
+            changed = true;
+        }
+        if (budget.capText() != null && !budget.capText().equals(record.budgetCapText)) {
+            record.budgetCapText = truncate(budget.capText(), 200);
+            changed = true;
+        }
+        if (budget.projectCode() != null && record.projectCode == null) {
+            record.projectCode = truncate(budget.projectCode(), 64);
+            changed = true;
+        }
+        return changed;
     }
 
     private String resolveRegion(TenderRecord record) {

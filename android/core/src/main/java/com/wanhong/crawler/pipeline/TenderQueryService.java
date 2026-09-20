@@ -191,6 +191,10 @@ public class TenderQueryService {
         // 公告类型：界面上用来标记"结果公告/合同公告"，也是默认过滤的依据
         item.put("noticeType", record.noticeType);
         item.put("biddable", record.biddable());
+        // 预算金额（元）与展示标签；「最高限价」可能是单价/比例，只在详情里给原文
+        item.put("budgetYuan", record.budgetYuan);
+        item.put("budgetLabel", record.budgetLabel());
+        item.put("projectCode", record.projectCode);
         return item;
     }
 
@@ -203,6 +207,7 @@ public class TenderQueryService {
         item.put("deadlineSource", record.deadlineSource);
         item.put("sourceKeyword", record.sourceKeyword);
         item.put("verifiedAt", record.verifiedAt);
+        item.put("budgetCapText", record.budgetCapText);
         return item;
     }
 

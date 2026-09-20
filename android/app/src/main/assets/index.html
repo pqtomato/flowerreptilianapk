@@ -154,6 +154,8 @@
         .badge.gray { background: #eef1ef; color: var(--muted); }
         .badge.new { background: var(--danger); color: #fff; }
         .badge.est { background: #eef1ef; color: var(--muted); font-weight: 400; }
+        /* 预算金额：用主色的浅底，比"剩余天数"低调、但比灰色徽标显眼 */
+        .badge.money { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
 
         .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
         .keywords { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
@@ -354,6 +356,7 @@
             .card .card-title mark { background: #6b5a1f; }
             .kw { background: #232c28; }
             .badge.gray, .badge.est { background: #232c28; }
+            .badge.money { background: #232c28; color: #7fd0a5; }
         }
     </style>
 </head>
@@ -628,6 +631,7 @@
             <select id="fSort">
                 <option value="publish">按发布时间（最新优先）</option>
                 <option value="deadline">按截止时间（最紧急优先）</option>
+                <option value="budget">按预算金额（从高到低）</option>
             </select>
         </div>
         <div class="btn-row">
@@ -846,6 +850,8 @@
 
         const badges = [];
         badges.push(deadlineBadge(item));
+        // 预算金额：决定"投哪个"的关键信息，放在截止徽标旁边（没有金额就不显示）
+        if (item.budgetLabel) badges.push('<span class="badge money">' + escapeHtml(item.budgetLabel) + '</span>');
         if (item.isNew) badges.push('<span class="badge new">新</span>');
         // 关掉「只看可投」后才会看到的类型标记，免得和真正的招标公告混在一起分不清
         if (item.biddable === false && NOTICE_TYPE_LABELS[item.noticeType]) {
@@ -963,6 +969,15 @@
             '<div class="detail-kv">截止：' + escapeHtml(formatDate(item.deadlineDate)) +
                 (item.deadlineEstimated ? '（估算值，以原文为准）' : '') +
                 (item.deadlineSource ? ' · ' + escapeHtml(item.deadlineSource) : '') + '</div>' +
+            (item.budgetLabel
+                ? '<div class="detail-kv">预算金额：' + escapeHtml(item.budgetLabel) + '</div>'
+                : '') +
+            (item.budgetCapText
+                ? '<div class="detail-kv">最高限价：' + escapeHtml(item.budgetCapText) + '</div>'
+                : '') +
+            (item.projectCode
+                ? '<div class="detail-kv">项目编号：' + escapeHtml(item.projectCode) + '</div>'
+                : '') +
             '<div class="detail-kv">命中：' + escapeHtml(item.matchedKeywords || '-') +
                 (item.matchedScope ? '（' + escapeHtml(item.matchedScope) + '）' : '') + '</div>' +
             (attachments.length

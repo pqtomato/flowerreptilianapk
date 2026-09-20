@@ -43,6 +43,18 @@ public class TenderRecord {
      * 见 {@link com.wanhong.crawler.common.NoticeType}。
      */
     public String noticeType;
+    /**
+     * 预算金额（元）；正文里没写或写「/」时为 null。
+     *
+     * <p>只有「预算金额」会当钱：「最高限价」在真实公告里可能是
+     * {@code 3.4元/平方米/年}（单价）或 {@code 审定金额的95%}（比例），
+     * 当总额排序会得出荒谬结果，所以它只留文本（{@link #budgetCapText}）。
+     */
+    public Long budgetYuan;
+    /** 最高限价原文（单价 / 比例都可能），仅用于展示 */
+    public String budgetCapText;
+    /** 项目编号，例如 H0FSCG26D03G0397 */
+    public String projectCode;
     public boolean isNew;
     public boolean tracked;
     public boolean removed;
@@ -80,5 +92,15 @@ public class TenderRecord {
      */
     public boolean biddable() {
         return com.wanhong.crawler.common.NoticeType.isBiddable(noticeType);
+    }
+
+    /** 有没有可排序的金额（0 与 null 都算没有）。 */
+    public boolean hasBudget() {
+        return budgetYuan != null && budgetYuan > 0;
+    }
+
+    /** 列表上显示的金额短标签，例如「306 万」；没有金额返回空串。 */
+    public String budgetLabel() {
+        return com.wanhong.crawler.crawler.BudgetExtractor.label(budgetYuan);
     }
 }

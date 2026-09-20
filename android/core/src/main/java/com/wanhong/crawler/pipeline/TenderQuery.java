@@ -7,6 +7,8 @@ public class TenderQuery {
 
     public static final String SORT_PUBLISH = "publish";
     public static final String SORT_DEADLINE = "deadline";
+    /** 预算从高到低（没有金额的排最后） */
+    public static final String SORT_BUDGET = "budget";
 
     public String siteCode;
     public String keyword;
@@ -28,6 +30,10 @@ public class TenderQuery {
 
     public boolean sortByDeadline() {
         return SORT_DEADLINE.equalsIgnoreCase(sortBy);
+    }
+
+    public boolean sortByBudget() {
+        return SORT_BUDGET.equalsIgnoreCase(sortBy);
     }
 
     public TenderQuery copy() {
