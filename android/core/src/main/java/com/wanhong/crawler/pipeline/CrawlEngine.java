@@ -2,6 +2,7 @@ package com.wanhong.crawler.pipeline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wanhong.crawler.common.Hashing;
+import com.wanhong.crawler.common.NoticeType;
 import com.wanhong.crawler.common.RegionNames;
 import com.wanhong.crawler.config.CrawlerSettings;
 import com.wanhong.crawler.crawler.DeadlineExtractor;
@@ -11,6 +12,7 @@ import com.wanhong.crawler.crawler.model.CrawlContext;
 import com.wanhong.crawler.crawler.model.CrawlItem;
 import com.wanhong.crawler.crawler.model.CrawlResult;
 import com.wanhong.crawler.crawler.model.DetailResult;
+import com.wanhong.crawler.crawler.model.NewTender;
 import com.wanhong.crawler.crawler.model.SearchTerm;
 import com.wanhong.crawler.filter.KeywordRules;
 import com.wanhong.crawler.http.CrawlException;
@@ -142,7 +144,7 @@ public class CrawlEngine {
         List<SiteCrawler> targets = resolveCrawlers(siteCode);
         List<SearchTerm> terms = keywordRules.getSearchTerms();
         if (maxKeywords != null && maxKeywords > 0 && terms.size() > maxKeywords) {
-            terms = terms.subList(0, maxKeywords);
+            terms = evenlySample(terms, maxKeywords);
         }
         if (terms.isEmpty()) {
             return CrawlSummary.of("FAILED", "关键词为空，请在「关键词」页添加");
@@ -172,6 +174,7 @@ public class CrawlEngine {
         }
 
         summary.durationMs = System.currentTimeMillis() - startedAt;
+        summary.finishedAt = LocalDateTime.now();
         if (okSites == 0) {
             summary.status = "FAILED";
             summary.message = "全部站点采集失败";
@@ -189,6 +192,38 @@ public class CrawlEngine {
                 + "，排除 " + summary.excludedCount + "，命中 " + summary.matchedCount
                 + "，新增 " + summary.savedCount + "，耗时 " + summary.durationMs + "ms");
         return summary;
+    }
+
+    /**
+     * 在整张词表上<b>均匀取样</b> count 个词（首尾都要覆盖）。
+     *
+     * <p>踩过的坑：原来是直接取前 count 个（{@code subList(0, n)}），
+     * 而 {@code flower-keywords.txt} 是「窄 → 宽」排列的：
+     * 前面是 花卉 / 花卉苗木 / 花卉种植 / 花卉采购 / 花卉租摆，后面才是 绿化 / 园林 / 景观。
+     * 于是界面上那句"手机上想快点可填 10"实际会<b>把宽泛词全跳过</b> ——
+     * 实测「90 天窗口 + 前 5 个窄词」候选 0，用户会以为应用坏了。
+     *
+     * <p>均匀取样缩小的是"覆盖密度"而不是"召回面"，让"少检索几个词"仍然能捞到东西。
+     */
+    static <T> List<T> evenlySample(List<T> source, int count) {
+        List<T> picked = new ArrayList<>();
+        if (source == null || source.isEmpty() || count <= 0) {
+            return picked;
+        }
+        if (source.size() <= count) {
+            picked.addAll(source);
+            return picked;
+        }
+        if (count == 1) {
+            picked.add(source.get(0));
+            return picked;
+        }
+        // 把 [0, size-1] 均分成 count 个点，首尾都取到
+        for (int i = 0; i < count; i++) {
+            int index = (int) ((long) i * (source.size() - 1) / (count - 1));
+            picked.add(source.get(index));
+        }
+        return picked;
     }
 
     private List<SiteCrawler> resolveCrawlers(String siteCode) {
@@ -329,6 +364,7 @@ public class CrawlEngine {
         record.summary = truncate(item.getSummary(), MAX_SUMMARY_LENGTH);
         record.crawlTime = now;
         record.createTime = now;
+        record.noticeType = NoticeType.classify(record.category, record.title);
         record.isNew = true;
         record.tracked = false;
         record.removed = false;
@@ -373,12 +409,37 @@ public class CrawlEngine {
 
         repository.insert(record);
         result.incrementSaved();
+        // 只把"可投的"收进通知列表：新入库的成交/合同类公告不是机会，
+        // 通知里列出来反而是噪声（与列表默认过滤保持同一个口径）。
+        if (record.biddable()) {
+            result.addNewItem(new NewTender(record.title, record.deadlineDate));
+        }
     }
 
     /** 已存在的公告：补跨站来源、补正文、补截止日期与区县。 */
     private void handleDuplicate(TenderRecord existing, CrawlItem item,
                                  CrawlResult result, AtomicInteger detailBudget) {
+        // 重复项也算"命中"：它在上面那条 findByUrlHash 分支就被拦下了，
+        // 根本没走到 incrementMatched()。不补这一句，"命中"就会把重复项漏掉，
+        // 日志里会出现「候选 40 · 命中 0 · 重复 7」这种自相矛盾的数字
+        // （重复 7 条必然是先命中过才会进库）。补上后恒有 命中 = 新增 + 重复。
+        result.incrementMatched();
+
         boolean changed = false;
+
+        // 自愈：老数据可能带着过期 / 缺失的类型标记，或者挂着"结果类公告估出来的假截止日"。
+        // 放在这里可以让存量数据在每次采集时被逐步修正，不必每次都靠 DB 版本升级。
+        String expectedType = NoticeType.classify(existing.category, existing.title);
+        if (!expectedType.equals(existing.noticeType)) {
+            existing.noticeType = expectedType;
+            changed = true;
+        }
+        if (!existing.biddable() && existing.deadlineEstimated) {
+            existing.deadlineDate = null;
+            existing.deadlineEstimated = false;
+            existing.deadlineSource = "";
+            changed = true;
+        }
 
         if (!item.getSiteCode().equals(existing.siteCode)) {
             Set<String> alsoFoundOn = new LinkedHashSet<>();
@@ -438,7 +499,10 @@ public class CrawlEngine {
 
     private void applyDeadline(TenderRecord record) {
         String text = record.hasContent() ? record.content : record.summary;
-        DeadlineExtractor.Deadline deadline = deadlineExtractor.resolve(text, record.publishDate);
+        // 结果 / 合同 / 终止类公告没有报名截止时间，不能给它们估算 ——
+        // 否则"已定标"的项目会顶着「还剩 N 天」混进未截止列表。
+        boolean allowEstimate = record.biddable();
+        DeadlineExtractor.Deadline deadline = deadlineExtractor.resolve(text, record.publishDate, allowEstimate);
         record.deadlineDate = deadline.date();
         record.deadlineEstimated = deadline.estimated();
         record.deadlineSource = truncate(deadline.source(), 64);

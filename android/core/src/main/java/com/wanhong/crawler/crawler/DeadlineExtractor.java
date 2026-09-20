@@ -76,6 +76,19 @@ public class DeadlineExtractor {
     }
 
     public Deadline resolve(String content, LocalDateTime publishDate) {
+        return resolve(content, publishDate, true);
+    }
+
+    /**
+     * 解析截止时间。
+     *
+     * @param allowEstimate 是否允许"发布日期 + N 天"的兜底估算。
+     *        对成交 / 中标 / 合同这类<b>结果类公告</b>必须传 {@code false}：
+     *        它们本来就没有报名截止时间，估出来的只是一个<b>未来的假截止日</b>，
+     *        会让"已定标"的项目顶着「还剩 N 天」混进未截止列表。
+     *        正文里真写了日期的仍然照常解析。
+     */
+    public Deadline resolve(String content, LocalDateTime publishDate, boolean allowEstimate) {
         int fallbackDays = settings.deadline.defaultDays;
         int maxDays = settings.deadline.maxDays;
 
@@ -87,7 +100,7 @@ public class DeadlineExtractor {
                 }
             }
         }
-        if (publishDate != null && fallbackDays > 0) {
+        if (allowEstimate && publishDate != null && fallbackDays > 0) {
             return new Deadline(publishDate.plusDays(fallbackDays), true,
                     "发布日期+" + fallbackDays + "天估算");
         }

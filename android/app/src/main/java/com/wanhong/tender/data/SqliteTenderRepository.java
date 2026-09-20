@@ -235,6 +235,10 @@ public class SqliteTenderRepository implements TenderRepository {
         if (query.trackedOnly) {
             sb.append(" AND tracked=1");
         }
+        if (query.onlyBiddable) {
+            // 空值按"可投"处理：老数据迁移前或类型认不出来时，宁可多显示也不漏机会
+            sb.append(" AND (notice_type IS NULL OR notice_type='' OR notice_type='bid')");
+        }
         Where where = new Where();
         where.sql = sb.toString();
         where.args = args.toArray(new String[0]);
@@ -305,6 +309,10 @@ public class SqliteTenderRepository implements TenderRepository {
         v.put("content_html", r.contentHtml);
         v.put("attachments", r.attachments);
         v.put("also_found_on", r.alsoFoundOn);
+        // 类型兜底：万一调用方没设，落库前补算一次，避免出现 NULL 被当成"可投"的漏网数据
+        v.put("notice_type", r.noticeType != null && !r.noticeType.isEmpty()
+                ? r.noticeType
+                : com.wanhong.crawler.common.NoticeType.classify(r.category, r.title));
         v.put("is_new", r.isNew ? 1 : 0);
         v.put("tracked", r.tracked ? 1 : 0);
         v.put("removed", r.removed ? 1 : 0);
@@ -339,6 +347,7 @@ public class SqliteTenderRepository implements TenderRepository {
         r.contentHtml = c.getString(c.getColumnIndexOrThrow("content_html"));
         r.attachments = c.getString(c.getColumnIndexOrThrow("attachments"));
         r.alsoFoundOn = c.getString(c.getColumnIndexOrThrow("also_found_on"));
+        r.noticeType = c.getString(c.getColumnIndexOrThrow("notice_type"));
         r.isNew = c.getInt(c.getColumnIndexOrThrow("is_new")) == 1;
         r.tracked = c.getInt(c.getColumnIndexOrThrow("tracked")) == 1;
         r.removed = c.getInt(c.getColumnIndexOrThrow("removed")) == 1;

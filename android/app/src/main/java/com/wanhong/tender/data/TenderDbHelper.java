@@ -1,8 +1,15 @@
 package com.wanhong.tender.data;
 
+import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+
+import com.wanhong.crawler.common.NoticeType;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * SQLite 建表。
@@ -13,7 +20,11 @@ import android.database.sqlite.SQLiteOpenHelper;
 public class TenderDbHelper extends SQLiteOpenHelper {
 
     public static final String DB_NAME = "flower_tender.db";
-    public static final int DB_VERSION = 1;
+    /**
+     * v2：新增 notice_type（公告类型），用于默认过滤掉"成交 / 合同"这类非可投公告
+     * v3：订正数据 —— 清掉非可投公告上已经存进去的"估算截止日"
+     */
+    public static final int DB_VERSION = 3;
 
     public static final String TABLE_TENDER = "tender";
     public static final String TABLE_KEYWORD = "crawler_keyword";
@@ -48,6 +59,7 @@ public class TenderDbHelper extends SQLiteOpenHelper {
                 + "content_html TEXT,"
                 + "attachments TEXT,"
                 + "also_found_on TEXT,"
+                + "notice_type TEXT,"
                 + "is_new INTEGER NOT NULL DEFAULT 1,"
                 + "tracked INTEGER NOT NULL DEFAULT 0,"
                 + "removed INTEGER NOT NULL DEFAULT 0,"
@@ -61,6 +73,7 @@ public class TenderDbHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tender_deadline ON " + TABLE_TENDER + "(deadline_date)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tender_region ON " + TABLE_TENDER + "(region)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tender_new ON " + TABLE_TENDER + "(is_new)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_tender_notice_type ON " + TABLE_TENDER + "(notice_type)");
 
         db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_KEYWORD + " ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -95,6 +108,58 @@ public class TenderDbHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // 目前只有 v1；后续加字段时在这里按版本号补 ALTER TABLE，避免用户数据丢失
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN notice_type TEXT");
+            backfillNoticeType(db);
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tender_notice_type ON "
+                    + TABLE_TENDER + "(notice_type)");
+        }
+        if (oldVersion < 3) {
+            clearEstimatedDeadlineForNonBiddable(db);
+        }
+    }
+
+    /**
+     * v2 → v3 数据订正：把非可投公告（成交 / 中标 / 合同 / 终止）上"估算出来的截止日"清掉。
+     *
+     * <p>这些公告本来就没有报名截止时间，之前被按「发布日 + N 天」估出了一个未来的日期，
+     * 于是"已定标"的项目顶着「还剩 48 天」混进未截止列表，甚至排在按截止排序的最前面。
+     * 光加类型过滤还不够 —— 老数据里这些假日期已经落库了，而爬虫只有在
+     * {@code deadlineDate == null} 时才会重算，永远轮不到它们。
+     *
+     * <p>只清"估算"的：正文里真解析出日期的（estimated=0）保留。
+     */
+    private void clearEstimatedDeadlineForNonBiddable(SQLiteDatabase db) {
+        db.execSQL("UPDATE " + TABLE_TENDER
+                + " SET deadline_date=NULL, deadline_estimated=0, deadline_source=''"
+                + " WHERE deadline_estimated=1"
+                + " AND notice_type IS NOT NULL AND notice_type<>'" + NoticeType.BID + "'");
+    }
+
+    /**
+     * v1 → v2 迁移：给已经入库的公告补上类型。
+     *
+     * <p>不补的话老数据 noticeType 全是 NULL，会被当成"可投"照旧显示 ——
+     * 等于这次过滤对老用户完全没生效。
+     */
+    private void backfillNoticeType(SQLiteDatabase db) {
+        Map<Long, String> types = new HashMap<>();
+        Cursor cursor = db.rawQuery(
+                "SELECT id, category, title FROM " + TABLE_TENDER, null);
+        try {
+            while (cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                String category = cursor.getString(1);
+                String title = cursor.getString(2);
+                types.put(id, NoticeType.classify(category, title));
+            }
+        } finally {
+            cursor.close();
+        }
+        for (Map.Entry<Long, String> entry : types.entrySet()) {
+            ContentValues values = new ContentValues();
+            values.put("notice_type", entry.getValue());
+            db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(entry.getKey())});
+        }
     }
 }

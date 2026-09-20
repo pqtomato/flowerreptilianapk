@@ -33,6 +33,11 @@ import com.wanhong.tender.server.LocalApiServer;
  */
 public class MainActivity extends Activity {
 
+    /** 通知点击时带过来的"要打开哪个视图" */
+    public static final String EXTRA_VIEW = "view";
+    /** 直达「新公告」筛选（采集完成通知用） */
+    public static final String VIEW_NEW = "new";
+
     private static final int REQ_NOTIFICATION = 1001;
 
     private WebView webView;
@@ -114,12 +119,36 @@ public class MainActivity extends Activity {
             }
         });
 
-        webView.loadUrl("http://127.0.0.1:" + LocalApiServer.PORT + "/");
+        webView.loadUrl(buildUrl(getIntent()));
 
         // 页面里点"打开电池优化设置"时，走这个极小的桥接调起系统界面
         webView.addJavascriptInterface(new AppJsBridge(), "AndroidApp");
 
         requestNotificationPermission();
+    }
+
+    /** 冷启动：把通知带来的视图参数拼进 URL，页面初始化时自己应用。 */
+    private String buildUrl(Intent intent) {
+        String base = "http://127.0.0.1:" + LocalApiServer.PORT + "/";
+        String view = intent == null ? null : intent.getStringExtra(EXTRA_VIEW);
+        return view == null || view.isEmpty() ? base : base + "?view=" + Uri.encode(view);
+    }
+
+    /**
+     * 应用已经开着时点通知：不重新加载页面（会丢滚动位置和当前筛选），
+     * 直接调页面里的 {@code window.applyView} 切视图。
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String view = intent == null ? null : intent.getStringExtra(EXTRA_VIEW);
+        if (view == null || view.isEmpty() || webView == null) {
+            return;
+        }
+        String safe = view.replaceAll("[^a-zA-Z0-9_-]", "");
+        webView.evaluateJavascript(
+                "window.applyView && window.applyView('" + safe + "')", null);
     }
 
     /** 暴露给页面的原生能力（保持极小，避免扩大攻击面） */

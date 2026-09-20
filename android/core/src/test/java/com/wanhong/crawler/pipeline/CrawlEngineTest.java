@@ -294,6 +294,29 @@ class CrawlEngineTest {
     }
 
     @Test
+    @DisplayName("重复采集时 命中 = 新增 + 重复（命中不能把重复项漏掉）")
+    void matchedCountIncludesDuplicates() {
+        FakeCrawler crawler = new FakeCrawler();
+        crawler.add(item("花卉采购项目招标公告", "https://example.com/d1.html", PUBLISH));
+        crawler.add(item("苗木采购项目招标公告", "https://example.com/d2.html", PUBLISH));
+        transport.defaultStatus(404);
+        useCrawler(crawler);
+
+        CrawlSummary first = engine.crawl("all", null, null, "MANUAL", null);
+        assertEquals(2, first.savedCount);
+        assertEquals(0, first.duplicateCount);
+
+        CrawlSummary second = engine.crawl("all", null, null, "MANUAL", null);
+        assertEquals(0, second.savedCount);
+        assertEquals(2, second.duplicateCount);
+        // 回归点：重复项在关键词判定之前就被 findByUrlHash 判为"已存在"，
+        // 曾经导致命中数把重复项整段漏掉，日志里出现「命中 0 · 重复 7」这种
+        // 自相矛盾的数字（重复 7 条必然是先命中过才会入库）。
+        assertEquals(second.savedCount + second.duplicateCount, second.matchedCount,
+                "命中应当等于 新增 + 重复");
+    }
+
+    @Test
     @DisplayName("重复采集同一条时会补上缺失的截止日期")
     void backfillsDeadlineOnDuplicate() {
         FakeCrawler crawler = new FakeCrawler();
@@ -312,5 +335,56 @@ class CrawlEngineTest {
         TenderRecord refreshed = repository.all().get(0);
         assertNotNull(refreshed.deadlineDate, "重复记录应补上截止日期");
         assertTrue(refreshed.deadlineEstimated);
+    }
+
+    // ------------------------------------------------- maxKeywords 的选词口径
+
+    @Test
+    @DisplayName("maxKeywords 均匀取样：宽泛词必须被取到（不能只取最窄的前 N 个）")
+    void evenlySampleKeepsBroadKeywords() throws Exception {
+        List<String> terms = readKeywordFile("keywords/flower-keywords.txt");
+        assertTrue(terms.size() > 20, "词表规模异常：" + terms.size());
+
+        List<String> picked = CrawlEngine.evenlySample(terms, 10);
+        assertEquals(10, picked.size());
+        assertEquals(terms.get(0), picked.get(0), "要覆盖到第一个词");
+        assertEquals(terms.get(terms.size() - 1), picked.get(picked.size() - 1), "要覆盖到最后一个词");
+        assertEquals(10, new java.util.HashSet<>(picked).size(), "不应重复");
+
+        // 回归点：实测「只取前 5 个（花卉/花卉苗木/花卉种植/花卉采购/花卉租摆）+ 90 天窗口」
+        // 候选为 0，用户会以为应用坏了。词表是"窄→宽"排列的，宽泛词在后面。
+        boolean hasBroad = picked.stream().anyMatch(
+                term -> term.contains("绿化") || term.contains("园林") || term.contains("景观"));
+        assertTrue(hasBroad, "取样里必须有宽泛词，否则又退化成'只搜最窄的几个词'：" + picked);
+    }
+
+    @Test
+    @DisplayName("evenlySample 边界：空表 / 不裁剪 / 取 1 个 / count<=0")
+    void evenlySampleBoundaries() {
+        assertTrue(CrawlEngine.evenlySample(null, 3).isEmpty());
+        assertTrue(CrawlEngine.evenlySample(Collections.<String>emptyList(), 3).isEmpty());
+        assertTrue(CrawlEngine.evenlySample(Arrays.asList("a", "b"), 0).isEmpty());
+        // 词表本来就不够长时原样返回
+        assertEquals(Arrays.asList("a", "b"), CrawlEngine.evenlySample(Arrays.asList("a", "b"), 5));
+        assertEquals(Collections.singletonList("a"), CrawlEngine.evenlySample(Arrays.asList("a", "b", "c"), 1));
+    }
+
+    /** 直接读内核资源里的真实词表（与 KeywordRules 用的是同一份）。 */
+    private static List<String> readKeywordFile(String resource) throws Exception {
+        List<String> lines = new ArrayList<>();
+        try (java.io.InputStream in = CrawlEngineTest.class.getClassLoader().getResourceAsStream(resource)) {
+            assertNotNull(in, "找不到资源：" + resource);
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                        lines.add(trimmed);
+                    }
+                }
+            }
+        }
+        return lines;
     }
 }

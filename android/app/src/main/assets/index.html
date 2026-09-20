@@ -44,10 +44,15 @@
         }
 
         /* ---------------- 顶部固定区 ---------------- */
-        .app-header {
+        /* 顶部固定区：标题行 + 搜索行 + 筛选 chips 作为一个整体固定在顶部。
+           它的真实高度由 JS 量出来写进 --header-h，main 用这个值做 padding-top，
+           所以不需要手写魔法数字，也不会出现「内容被固定栏盖住」的问题。 */
+        .topbar {
             position: fixed;
             top: 0; left: 0; right: 0;
             z-index: 30;
+        }
+        .app-header {
             background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: #fff;
             padding: calc(var(--safe-top) + 10px) 14px 10px;
@@ -86,12 +91,18 @@
 
         /* ---------------- 筛选 chips ---------------- */
         .chips {
-            position: fixed; left: 0; right: 0; top: calc(var(--safe-top) + 106px);
-            z-index: 25; background: var(--bg);
+            background: var(--bg);
             display: flex; gap: 8px; padding: 8px 14px; overflow-x: auto;
             -webkit-overflow-scrolling: touch; scrollbar-width: none;
             border-bottom: 1px solid var(--border);
         }
+
+        /* 搜索框、筛选 chips、"全部标记已读"、未读角标都只属于「公告」页。
+           切到采集 / 关键词 / 日志时隐藏，否则那几页顶上挂着一排点了没反应的无关控件。 */
+        body:not([data-tab="list"]) .search-row,
+        body:not([data-tab="list"]) .chips,
+        body:not([data-tab="list"]) #newBadge,
+        body:not([data-tab="list"]) #btnMarkRead { display: none; }
         .chips::-webkit-scrollbar { display: none; }
         .chip {
             flex: 0 0 auto; border: 1px solid var(--border); background: var(--card);
@@ -103,7 +114,7 @@
 
         /* ---------------- 主体 ---------------- */
         main {
-            padding: calc(var(--safe-top) + var(--header-h)) 12px calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
+            padding: var(--header-h) 12px calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
             max-width: 900px; margin: 0 auto;
         }
 
@@ -111,6 +122,7 @@
             display: flex; gap: 8px; margin: 4px 0 10px; font-size: 12px; color: var(--muted);
             align-items: center; flex-wrap: wrap;
         }
+        .summary-bar a { color: var(--primary); text-decoration: none; margin-left: 4px; font-weight: 500; }
         .summary-bar strong { color: var(--primary); font-size: 14px; }
 
         /* 卡片列表：手机端不用表格 */
@@ -345,9 +357,10 @@
         }
     </style>
 </head>
-<body>
+<body data-tab="list">
 
-<!-- ================= 顶部：标题 + 搜索 ================= -->
+<!-- ================= 顶部固定区：标题 + 搜索 + 筛选 ================= -->
+<div class="topbar" id="topbar">
 <header class="app-header">
     <div class="title-row">
         <h1>花卉招标监控</h1>
@@ -370,9 +383,11 @@
     <button class="chip active" data-filter="onlyOpen">未截止</button>
     <button class="chip" data-filter="onlyNew">新公告<span class="dot" id="chipNewDot" style="display:none"></span></button>
     <button class="chip" data-filter="tracked">收藏</button>
-    <button class="chip active" data-filter="all">全部</button>
+    <button class="chip" data-filter="all">全部</button>
+    <button class="chip active" data-filter="onlyBiddable">只看可投</button>
     <button class="chip" data-filter="sortDeadline">按截止排序</button>
 </div>
+</div><!-- /topbar -->
 
 <main>
     <!-- ================= Tab 1：公告列表 ================= -->
@@ -380,6 +395,7 @@
         <div class="summary-bar">
             <span>共 <strong id="totalCount">0</strong> 条</span>
             <span id="filterSummary"></span>
+            <span id="biddableHint"></span>
         </div>
         <div class="card-list" id="cardList"></div>
         <div id="listFooter"></div>
@@ -414,7 +430,7 @@
                 </select>
             </div>
             <div class="field">
-                <label>检索词数量上限（留空 = 全部，手机上想快点可填 10）</label>
+                <label>检索词数量上限（留空 = 全部；填 10 会从整张词表里<strong>均匀抽</strong> 10 个，跑得快但覆盖变稀）</label>
                 <input id="maxKeywords" type="number" min="1" placeholder="例如 10"/>
             </div>
             <button class="btn" id="btnCrawl">开始采集</button>
@@ -430,7 +446,6 @@
             </div>
         </div>
 
-        <div class="section">
         <div class="section">
             <h2>应用设置</h2>
             <div class="field">
@@ -467,8 +482,32 @@
                     <option value="false">关闭（更快）</option>
                 </select>
             </div>
+            <div class="field">
+                <label>截止提醒</label>
+                <select id="setReminderEnabled">
+                    <option value="true">开启（有公告快到截止时间时通知我）</option>
+                    <option value="false">关闭</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>提前几天提醒</label>
+                <select id="setReminderDays">
+                    <option value="1">提前 1 天</option>
+                    <option value="3">提前 3 天（推荐）</option>
+                    <option value="7">提前 7 天</option>
+                </select>
+            </div>
             <button class="btn" id="btnSaveSettings">保存设置</button>
             <div class="status-line" id="settingsResult" style="display:none"></div>
+            <div class="btn-row" style="margin-top:10px">
+                <button class="btn ghost" id="btnReminderCheck">立即检查提醒</button>
+            </div>
+            <div class="status-line" id="reminderResult" style="display:none"></div>
+            <div class="hint" style="margin-top:10px">
+                提醒每天在「采集时间」之后半小时自动检查一次，把「提前 N 天内截止」的公告
+                汇总成一条通知；已截止的和成交 / 中标 / 合同类不会提醒。
+                提醒用的是独立通知渠道，静音「采集任务」不会影响它。
+            </div>
 
             <div class="hint" style="margin-top:12px">
                 <strong>后台自运行必读：</strong>安卓系统（尤其小米 / 华为 / OPPO / vivo）会限制后台任务，
@@ -478,6 +517,8 @@
             </div>
             <div class="hint" id="appInfo" style="margin-top:10px"></div>
         </div>
+
+        <div class="section">
             <h2>站点</h2>
             <div id="siteList" class="hint">加载中…</div>
         </div>
@@ -619,6 +660,13 @@
         wyxmzx: '阳光采购平台'
     };
 
+    /** 非可投公告的类型标签（默认被过滤掉，关掉「只看可投」时才看得到）。 */
+    const NOTICE_TYPE_LABELS = {
+        award: '结果公告',
+        contract: '合同公告',
+        aborted: '已终止'
+    };
+
     const state = {
         tab: 'list',
         page: 0,
@@ -629,6 +677,8 @@
         onlyOpen: true,
         onlyNew: false,
         tracked: false,
+        // 默认只看可投：实测默认列表里超过一半是"成交/中标/合同"这类已定标的结果公告
+        onlyBiddable: true,
         keyword: '',
         site: '',
         region: '',
@@ -636,7 +686,14 @@
         to: '',
         sort: 'deadline',
         currentDetail: null,
-        pollTimer: null
+        pollTimer: null,
+        // 上一次轮询到的"是否正在采集"，用来识别"刚刚跑完"这个瞬间
+        wasRunning: false,
+        // 采集按钮三态：idle / starting / running；crawlStartedAt 用于启动宽限期
+        crawlPhase: 'idle',
+        crawlStartedAt: 0,
+        // 因为「只看可投」被隐藏掉的条数（接口回传，用于在列表上方给出提示）
+        hiddenNonBiddable: 0
     };
 
     /* ---------------- 基础工具 ---------------- */
@@ -716,6 +773,7 @@
         if (state.onlyOpen) params.set('onlyOpen', 'true');
         if (state.onlyNew) params.set('onlyNew', 'true');
         if (state.tracked) params.set('tracked', 'true');
+        if (state.onlyBiddable) params.set('onlyBiddable', 'true');
         params.set('sort', state.sort);
         return params;
     }
@@ -739,6 +797,8 @@
             state.total = data.totalElements;
             state.hasMore = (state.page + 1) < data.totalPages;
             $('totalCount').textContent = data.totalElements;
+            state.hiddenNonBiddable = data.hiddenNonBiddable || 0;
+            renderBiddableHint();
 
             const html = data.content.map(cardHtml).join('');
             if (reset) {
@@ -756,6 +816,30 @@
         }
     }
 
+    /**
+     * 让「只看可投」这个过滤是可见的：告诉用户被隐藏了多少条，
+     * 并给一个一键查看入口。否则用户只会看到列表莫名其妙变短。
+     */
+    function renderBiddableHint() {
+        const box = $('biddableHint');
+        if (!box) return;
+        const hidden = state.hiddenNonBiddable || 0;
+        if (hidden <= 0 || !state.onlyBiddable) {
+            box.innerHTML = '';
+            return;
+        }
+        box.innerHTML = '· 已隐藏 ' + hidden + ' 条结果/合同公告' +
+            '<a href="javascript:void(0)" id="lnkShowNonBiddable">显示</a>';
+        const link = $('lnkShowNonBiddable');
+        if (link) {
+            link.addEventListener('click', () => {
+                state.onlyBiddable = false;
+                syncChips();
+                loadList(true);
+            });
+        }
+    }
+
     function cardHtml(item) {
         const keywords = (item.matchedKeywords || '').split(',').filter(Boolean).slice(0, 6)
             .map(k => '<span class="kw">' + escapeHtml(k) + '</span>').join('');
@@ -763,6 +847,10 @@
         const badges = [];
         badges.push(deadlineBadge(item));
         if (item.isNew) badges.push('<span class="badge new">新</span>');
+        // 关掉「只看可投」后才会看到的类型标记，免得和真正的招标公告混在一起分不清
+        if (item.biddable === false && NOTICE_TYPE_LABELS[item.noticeType]) {
+            badges.push('<span class="badge gray">' + NOTICE_TYPE_LABELS[item.noticeType] + '</span>');
+        }
         if (item.accessUrl) badges.push('<span class="badge gray">跳转链接</span>');
         if (!item.hasContent) badges.push('<span class="badge gray">无正文</span>');
         if (item.hasAttachment) badges.push('<span class="badge ok">含附件</span>');
@@ -1097,32 +1185,68 @@
     }
 
     /* ---------------- 采集 ---------------- */
+    // 点「开始采集」后是「入队 → WorkManager 真正开跑」，中间有几秒
+    // /api/crawl/status 仍然是 running=false。这段时间必须让 UI 停在
+    // "启动中…"，否则按钮会闪回「开始采集」，用户以为没点上就会重复点。
+    const CRAWL_START_GRACE_MS = 20000;
+
+    /** 采集按钮三态：idle（可点）/ starting（已入队，等它跑）/ running（正在跑）。 */
+    function setCrawlPhase(phase) {
+        state.crawlPhase = phase;
+        const button = $('btnCrawl');
+        if (!button) return;
+        button.disabled = phase !== 'idle';
+        button.textContent = phase === 'running' ? '采集中…'
+            : phase === 'starting' ? '启动中…' : '开始采集';
+    }
+
     async function loadStatus() {
         try {
             const s = await api('/api/crawl/status');
             const box = $('crawlStatus');
+            const starting = state.crawlPhase === 'starting'
+                && Date.now() - state.crawlStartedAt < CRAWL_START_GRACE_MS;
             if (s.running) {
+                state.crawlStartedAt = 0;
                 box.innerHTML = '<span class="running">● 正在采集</span>　' + escapeHtml(s.site || '') +
                     '<br/>已发出请求 ' + s.requestCount + ' 次，开始于 ' + escapeHtml(formatDate(s.since));
-                $('btnCrawl').disabled = true;
+                setCrawlPhase('running');
+                startPolling();
+            } else if (starting) {
+                // 已入队但还没跑起来：保持"启动中…"并继续轮询
+                box.innerHTML = '<span class="running">● 正在启动采集…</span>';
+                setCrawlPhase('starting');
                 startPolling();
             } else {
-                $('btnCrawl').disabled = false;
+                state.crawlStartedAt = 0;
+                setCrawlPhase('idle');
                 stopPolling();
                 const last = s.lastSummary;
                 if (last) {
                     const cls = last.status === 'FAILED' ? 'fail' : 'ok';
                     box.innerHTML = '<span class="' + cls + '">' + escapeHtml(last.status) + '</span>　' +
                         escapeHtml(last.message || '') + '<br/>' +
-                        '候选 ' + last.candidateCount + ' · 命中 ' + last.matchedCount +
+                        // 采集时间很重要：光看计数判断不出这批数据是不是几周前的
+                        (last.finishedAt
+                            ? '上次采集 ' + escapeHtml(formatDate(last.finishedAt).substring(5, 16)) + ' · '
+                            : '') +
+                        '耗时 ' + (last.durationMs / 1000).toFixed(1) + ' 秒' +
+                        (last.verifiedCount ? ' · 已下架校验 ' + last.verifiedCount + ' 条' : '') +
+                        '<br/>候选 ' + last.candidateCount + ' · 命中 ' + last.matchedCount +
                         ' · 新增 ' + last.savedCount + ' · 重复 ' + last.duplicateCount +
-                        ' · 失败 ' + last.failedCount +
-                        '<br/>耗时 ' + (last.durationMs / 1000).toFixed(1) + ' 秒' +
-                        (last.verifiedCount ? ' · 已下架校验 ' + last.verifiedCount + ' 条' : '');
+                        ' · 失败 ' + last.failedCount;
                 } else {
                     box.textContent = '尚未执行采集。点上面的「开始采集」抓取数据。';
                 }
             }
+            // 采集刚刚跑完：立刻把统计与公告列表刷成最新的，
+            // 免得用户切回「公告」页看到的还是采集前的旧数据
+            if (state.wasRunning && !s.running) {
+                loadStats();
+                loadList(true);
+                toast('采集完成，列表已刷新');
+            }
+            state.wasRunning = !!s.running;
         } catch (e) {
             $('crawlStatus').textContent = '状态获取失败：' + e.message;
         }
@@ -1147,7 +1271,8 @@
         const maxKeywords = $('maxKeywords').value;
         if (maxKeywords) params.set('maxKeywords', maxKeywords);
 
-        $('btnCrawl').disabled = true;
+        state.crawlStartedAt = Date.now();
+        setCrawlPhase('starting');
         $('crawlStatus').innerHTML = '<span class="running">● 正在启动采集…</span>';
         try {
             await api('/api/crawl/run?' + params.toString(), { method: 'POST' });
@@ -1155,7 +1280,8 @@
             startPolling();
             loadStatus();
         } catch (e) {
-            $('btnCrawl').disabled = false;
+            state.crawlStartedAt = 0;
+            setCrawlPhase('idle');
             $('crawlStatus').innerHTML = '<span class="fail">启动失败：' + escapeHtml(e.message) + '</span>';
         }
     }
@@ -1185,6 +1311,8 @@
     /* ---------------- Tab 切换 ---------------- */
     function switchTab(tab) {
         state.tab = tab;
+        // body[data-tab] 驱动 CSS：搜索框 / 筛选 chips / 已读按钮只在「公告」页出现
+        document.body.dataset.tab = tab;
         document.querySelectorAll('.tabbar button').forEach(b =>
             b.classList.toggle('active', b.dataset.tab === tab));
         document.querySelectorAll('.panel').forEach(p =>
@@ -1192,7 +1320,23 @@
         if (tab === 'crawl') { loadStatus(); loadStats(); }
         if (tab === 'keywords') { loadKeywords(); }
         if (tab === 'logs') loadLogs();
+        // 顶部固定区的高度随 tab 变化（公告页才有搜索行和 chips），重新量一次
+        syncTopbarHeight();
         window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    }
+
+    /**
+     * 把顶部固定区的真实高度写进 --header-h，供 main 的 padding-top 使用。
+     * 切 tab（顶部控件增减）、横竖屏、字体加载完都要重新量 ——
+     * 之前是手写死 108px，结果内容第一屏被固定栏盖住了一截。
+     */
+    function syncTopbarHeight() {
+        const topbar = $('topbar');
+        if (!topbar) return;
+        const height = Math.round(topbar.getBoundingClientRect().height);
+        if (height > 0) {
+            document.documentElement.style.setProperty('--header-h', height + 'px');
+        }
     }
 
     /* ---------------- 事件绑定 ---------------- */
@@ -1427,6 +1571,8 @@
             $('setLookback').value = String(s.lookbackDays);
             $('setFetchDetail').value = String(s.fetchDetail);
             $('setVerifyLink').value = String(s.verifyLink);
+            $('setReminderEnabled').value = String(s.reminderEnabled);
+            $('setReminderDays').value = String(s.reminderDays);
             $('appInfo').innerHTML = '数据库：' + escapeHtml(s.dbPath) +
                 '<br/>放宽证书校验的域名：' + escapeHtml((s.insecureHosts || []).join('、')) +
                 '<br/>提示：采集时会在通知栏显示进度，可以在应用外自动跑完。';
@@ -1442,21 +1588,48 @@
         params.set('lookbackDays', $('setLookback').value);
         params.set('fetchDetail', $('setFetchDetail').value);
         params.set('verifyLink', $('setVerifyLink').value);
+        params.set('reminderEnabled', $('setReminderEnabled').value);
+        params.set('reminderDays', $('setReminderDays').value);
         try {
             await api('/api/app/settings?' + params.toString(), { method: 'POST' });
             const enabled = $('setScheduleEnabled').value === 'true';
+            const reminder = $('setReminderEnabled').value === 'true';
             $('settingsResult').style.display = '';
             $('settingsResult').innerHTML = '设置已保存：定时采集' + (enabled
                 ? '已开启，每天 ' + $('setScheduleHour').value + ':00 自动采集'
-                : '已关闭，可在上方手动采集');
+                : '已关闭，可在上方手动采集') +
+                '；截止提醒' + (reminder
+                    ? '已开启，提前 ' + $('setReminderDays').value + ' 天'
+                    : '已关闭');
             toast('设置已保存');
         } catch (e) {
             toast('保存失败：' + e.message);
         }
     }
 
+    /** 立即跑一次提醒检查：确认提醒配好了，不用等到第二天。 */
+    async function checkReminderNow() {
+        const box = $('reminderResult');
+        box.style.display = '';
+        box.textContent = '正在检查…';
+        try {
+            const r = await api('/api/reminder/check', { method: 'POST' });
+            if (r.due > 0) {
+                box.innerHTML = '<span class="ok">发现 ' + r.due + ' 条即将截止的公告</span>，' +
+                    '已发通知（提前 ' + r.withinDays + ' 天口径）：<br/>' +
+                    escapeHtml(r.message).replace(/\n/g, '<br/>');
+            } else {
+                box.innerHTML = '<span class="ok">没有即将截止的公告</span>' +
+                    '（提前 ' + r.withinDays + ' 天口径内），所以没有发通知 —— 这是正常的。';
+            }
+        } catch (e) {
+            box.innerHTML = '<span class="fail">检查失败：' + escapeHtml(e.message) + '</span>';
+        }
+    }
+
     function bindAppSettings() {
         $('btnSaveSettings').addEventListener('click', saveAppSettings);
+        $('btnReminderCheck').addEventListener('click', checkReminderNow);
         $('btnBattery').addEventListener('click', () => {
             if (window.AndroidApp && window.AndroidApp.openBatterySettings) {
                 window.AndroidApp.openBatterySettings();
@@ -1466,7 +1639,35 @@
         });
     }
 
+    /** 把筛选状态切成"看新公告"：刚采到的、还没截止的、可投的，才是要看的东西。 */
+    function setNewView() {
+        state.onlyNew = true;
+        state.tracked = false;
+    }
+
+    /**
+     * 按"视图"参数切界面（运行中调用）。
+     * 注意冷启动不能走这里：那时首次 loadList 可能已经在飞，
+     * 再调一次会被 loadList 的 loading 守卫直接丢掉（见下面的初始化）。
+     */
+    function applyView(view) {
+        if (view !== 'new') {
+            return;
+        }
+        setNewView();
+        syncChips();
+        switchTab('list');
+        loadList(true);
+        toast('显示未读的新公告');
+    }
+
     /* ---------------- 初始化 ---------------- */
+    document.body.dataset.tab = state.tab;
+    // 冷启动：通知可能带了 ?view=new。必须在首次 loadList **之前**设好筛选状态，
+    // 否则首次加载用的是默认条件，而筹码(chips)高亮却是"新公告"，两者对不上。
+    if (new URLSearchParams(location.search).get('view') === 'new') {
+        setNewView();
+    }
     syncChips();
     loadScopes();
     loadAppSettings();
@@ -1477,6 +1678,14 @@
     loadLogs();
     loadKeywords();
     api('/api/crawl/status').then(s => { if (s.running) startPolling(); }).catch(() => {});
+
+    // 顶部固定区高度：首屏、字体加载完、横竖屏切换都要重新量一次
+    syncTopbarHeight();
+    window.addEventListener('resize', syncTopbarHeight);
+    window.addEventListener('orientationchange', () => setTimeout(syncTopbarHeight, 120));
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(syncTopbarHeight).catch(() => {});
+    }
 </script>
 </body>
 </html>

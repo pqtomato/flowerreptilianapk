@@ -38,6 +38,11 @@ public class TenderRecord {
     public String attachments;
     /** 同一公告在多个站点被发现的情况 */
     public String alsoFoundOn;
+    /**
+     * 公告类型：bid（可投）/ award（结果）/ contract（合同）/ aborted（终止）。
+     * 见 {@link com.wanhong.crawler.common.NoticeType}。
+     */
+    public String noticeType;
     public boolean isNew;
     public boolean tracked;
     public boolean removed;
@@ -65,5 +70,15 @@ public class TenderRecord {
 
     public boolean hasAttachment() {
         return attachments != null && !attachments.trim().isEmpty() && !"[]".equals(attachments);
+    }
+
+    /**
+     * 这条公告是否值得出现在默认列表里（可投）。
+     *
+     * <p>结果 / 合同 / 终止类公告不算 —— 它们已经定标或作废，
+     * 对"还有哪些能投"没有意义，而且会因为没有报名截止时间而被估出一个假截止日。
+     */
+    public boolean biddable() {
+        return com.wanhong.crawler.common.NoticeType.isBiddable(noticeType);
     }
 }

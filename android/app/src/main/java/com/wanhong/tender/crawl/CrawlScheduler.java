@@ -81,8 +81,8 @@ public final class CrawlScheduler {
                 ExistingWorkPolicy.REPLACE, request);
     }
 
-    /** 计算距离下一次整点运行的分钟数（保持"每天 8 点"这种直觉）。 */
-    private static long delayToNextRun(int hour) {
+    /** 计算距离下一次整点运行的分钟数（保持"每天 8 点"这种直觉）。提醒任务也复用它。 */
+    static long delayToNextRun(int hour) {
         Calendar now = Calendar.getInstance();
         Calendar target = Calendar.getInstance();
         target.set(Calendar.HOUR_OF_DAY, hour);

@@ -62,6 +62,17 @@ public class TenderQueryService {
         return repository.countQuery(query);
     }
 
+    /**
+     * 按任意条件计数。
+     *
+     * <p>界面用它算"因为只看可投而隐藏了多少条"：把 {@code onlyBiddable} 关掉再数一次，
+     * 两个数相减就是被过滤掉的成交 / 合同类公告数量 —— 让过滤对用户是可见的，
+     * 而不是莫名其妙少了东西。
+     */
+    public long count(TenderQuery query) {
+        return repository.countQuery(query == null ? new TenderQuery() : query);
+    }
+
     /** 站点统计（含最近采集信息由调用方补充） */
     public Map<String, Long> countBySite(List<String> siteCodes) {
         Map<String, Long> counts = new LinkedHashMap<>();
@@ -177,6 +188,9 @@ public class TenderQueryService {
         item.put("crawlTime", record.crawlTime);
         item.put("hasContent", record.hasContent());
         item.put("hasAttachment", record.hasAttachment());
+        // 公告类型：界面上用来标记"结果公告/合同公告"，也是默认过滤的依据
+        item.put("noticeType", record.noticeType);
+        item.put("biddable", record.biddable());
         return item;
     }
 
@@ -243,6 +257,7 @@ public class TenderQueryService {
         map.put("status", summary.status);
         map.put("message", summary.message);
         map.put("triggerType", summary.triggerType);
+        map.put("finishedAt", summary.finishedAt);
         map.put("candidateCount", summary.candidateCount);
         map.put("excludedCount", summary.excludedCount);
         map.put("matchedCount", summary.matchedCount);

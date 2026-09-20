@@ -7,12 +7,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wanhong.crawler.filter.CrawlerKeyword;
 import com.wanhong.crawler.pipeline.CrawlLogRecord;
 import com.wanhong.crawler.pipeline.CrawlSummary;
+import com.wanhong.crawler.pipeline.DeadlineReminder;
 import com.wanhong.crawler.pipeline.PageResult;
 import com.wanhong.crawler.pipeline.TenderQuery;
 import com.wanhong.crawler.pipeline.TenderQueryService;
 import com.wanhong.crawler.pipeline.TenderRecord;
 import com.wanhong.tender.core.CrawlerHolder;
 import com.wanhong.tender.crawl.CrawlScheduler;
+import com.wanhong.tender.crawl.ReminderNotifier;
+import com.wanhong.tender.crawl.ReminderScheduler;
+import com.wanhong.tender.crawl.ReminderWorker;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -148,6 +152,19 @@ public class LocalApiServer extends NanoHTTPD {
             result.put("pending", holder.linkVerifier.pendingCount());
             return json(result);
         }
+        // 立即检查一次截止提醒（设置页上的按钮）：走与定时任务完全相同的判定逻辑，
+        // 用来确认"提醒到底配好没有"，不用等到第二天。
+        if ("/api/reminder/check".equals(uri) && method == Method.POST) {
+            List<TenderRecord> due = ReminderWorker.findDue(context);
+            if (!due.isEmpty()) {
+                ReminderNotifier.notifyDue(context, due);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("due", due.size());
+            result.put("withinDays", holder.getReminderDays());
+            result.put("message", due.isEmpty() ? "" : DeadlineReminder.buildMessage(due));
+            return json(result);
+        }
         if ("/api/crawl/logs".equals(uri)) {
             List<Map<String, Object>> list = new ArrayList<>();
             for (CrawlLogRecord log : holder.repository.recentLogs(intParam(params, "limit", 20))) {
@@ -212,6 +229,14 @@ public class LocalApiServer extends NanoHTTPD {
         result.put("size", page.size);
         result.put("totalElements", page.totalElements);
         result.put("totalPages", page.totalPages);
+        // 告诉界面"因为只看可投而隐藏了多少条"，否则用户只会看到列表莫名其妙变短
+        long hidden = 0;
+        if (query.onlyBiddable) {
+            TenderQuery withAll = query.copy();
+            withAll.onlyBiddable = false;
+            hidden = Math.max(0, holder.queryService.count(withAll) - page.totalElements);
+        }
+        result.put("hiddenNonBiddable", hidden);
         return result;
     }
 
@@ -225,6 +250,7 @@ public class LocalApiServer extends NanoHTTPD {
         query.onlyOpen = boolParam(params, "onlyOpen");
         query.onlyNew = boolParam(params, "onlyNew");
         query.trackedOnly = boolParam(params, "tracked");
+        query.onlyBiddable = boolParam(params, "onlyBiddable");
         query.includeRemoved = boolParam(params, "includeRemoved");
         query.sortBy = param(params, "sort", TenderQuery.SORT_PUBLISH);
         return query;
@@ -292,7 +318,13 @@ public class LocalApiServer extends NanoHTTPD {
         status.put("site", holder.engine.getRunningSite());
         status.put("since", holder.engine.getRunningSince());
         status.put("requestCount", holder.fetcher.getRequestCount());
+        // 进程内的汇总优先（最新，且可能正在跑）；进程重启后它一定是 null，
+        // 这时回退到上次采集落下的快照，避免「采集」页显示"尚未执行采集"
+        // 而「日志」页明明有历史记录这种自相矛盾的状态。
         CrawlSummary last = holder.engine.getLastSummary();
+        if (last == null) {
+            last = holder.loadLastSummary();
+        }
         status.put("lastSummary", last == null ? null : TenderQueryService.toSummaryItem(last));
         status.put("insecureHosts", holder.transport.insecureHosts());
         return status;
@@ -305,6 +337,8 @@ public class LocalApiServer extends NanoHTTPD {
         map.put("lookbackDays", holder.getLookbackDays());
         map.put("fetchDetail", holder.isFetchDetail());
         map.put("verifyLink", holder.isVerifyLink());
+        map.put("reminderEnabled", holder.isReminderEnabled());
+        map.put("reminderDays", holder.getReminderDays());
         map.put("insecureHosts", holder.transport.insecureHosts());
         map.put("dbPath", context.getDatabasePath(com.wanhong.tender.data.TenderDbHelper.DB_NAME).getAbsolutePath());
         return map;
@@ -326,7 +360,15 @@ public class LocalApiServer extends NanoHTTPD {
         if (params.containsKey("verifyLink")) {
             holder.setVerifyLink(boolParam(params, "verifyLink"));
         }
+        if (params.containsKey("reminderEnabled")) {
+            holder.setReminderEnabled(boolParam(params, "reminderEnabled"));
+        }
+        if (params.containsKey("reminderDays")) {
+            holder.setReminderDays(intParam(params, "reminderDays", holder.getReminderDays()));
+        }
         CrawlScheduler.schedule(context);
+        // 提醒任务的触发时间跟着"每天几点采集"走，收藏/时间改了都要重排
+        ReminderScheduler.schedule(context);
     }
 
     // ------------------------------------------------------------------ 响应工具

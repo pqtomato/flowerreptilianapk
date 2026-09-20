@@ -1,7 +1,9 @@
 package com.wanhong.crawler.pipeline;
 
 import com.wanhong.crawler.crawler.model.CrawlResult;
+import com.wanhong.crawler.crawler.model.NewTender;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,6 +14,8 @@ public class CrawlSummary {
     public String status;
     public String message;
     public String triggerType;
+    /** 采集结束时间；界面用它显示"上次采集：xx-xx xx:xx"，好判断数据新不新 */
+    public LocalDateTime finishedAt;
     public int candidateCount;
     public int excludedCount;
     public int matchedCount;
@@ -22,6 +26,10 @@ public class CrawlSummary {
     public long requestCount;
     public long durationMs;
     public final List<SiteSummary> sites = new ArrayList<>();
+    /** 本次新入库的公告（跨站点汇总），"采集完成"通知用它列出具体是哪些 */
+    public final List<NewTender> newItems = new ArrayList<>();
+    /** 新入库的"可投"公告总数（newItems 会封顶，这个不会） */
+    public int newItemCount;
 
     public static CrawlSummary of(String status, String message) {
         CrawlSummary summary = new CrawlSummary();
@@ -54,6 +62,8 @@ public class CrawlSummary {
         failedCount += result.getFailedCount();
         requestCount += result.getRequestCount();
         durationMs += result.getDurationMs();
+        newItems.addAll(result.getNewItems());
+        newItemCount += result.getNewItemCount();
     }
 
     /** 单站点结果。 */

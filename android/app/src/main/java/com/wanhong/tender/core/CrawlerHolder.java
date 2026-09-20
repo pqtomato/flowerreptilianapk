@@ -16,6 +16,7 @@ import com.wanhong.crawler.crawler.epoint.EpointSearchClient;
 import com.wanhong.crawler.filter.KeywordRules;
 import com.wanhong.crawler.http.HttpFetcher;
 import com.wanhong.crawler.pipeline.CrawlEngine;
+import com.wanhong.crawler.pipeline.CrawlSummary;
 import com.wanhong.crawler.pipeline.KeywordService;
 import com.wanhong.crawler.pipeline.LinkVerifier;
 import com.wanhong.crawler.pipeline.TenderQueryService;
@@ -198,6 +199,97 @@ public final class CrawlerHolder {
     public void setVerifyLink(boolean enabled) {
         prefs.edit().putBoolean("verifyLink", enabled).apply();
         settings.verify.enabled = enabled;
+    }
+
+    // ------------------------------------------------------ 截止日期提醒
+
+    /** 截止提醒总开关（默认开：这是"别错过能投的项目"的最后一道保险）。 */
+    public boolean isReminderEnabled() {
+        return prefs.getBoolean("reminderEnabled", true);
+    }
+
+    public void setReminderEnabled(boolean enabled) {
+        prefs.edit().putBoolean("reminderEnabled", enabled).apply();
+    }
+
+    /** 提前几天开始提醒（1 / 3 / 7）。 */
+    public int getReminderDays() {
+        return prefs.getInt("reminderDays", 3);
+    }
+
+    public void setReminderDays(int days) {
+        int clamped = Math.max(1, Math.min(30, days));
+        prefs.edit().putInt("reminderDays", clamped).apply();
+    }
+
+    // ------------------------------------------------------ 上次采集结果快照
+
+    /**
+     * 采集结束后把汇总结果落一份快照。
+     *
+     * <p><b>为什么必须落盘</b>：汇总只活在进程内存里（{@code CrawlEngine.getLastSummary}）。
+     * 应用一旦被系统回收或手动重启，「采集」页就退回"尚未执行采集"，
+     * 而「日志」页明明有历史记录、统计也还在 —— 两页自相矛盾，看着像数据丢了。
+     *
+     * <p>为什么不能直接从数据库日志反推：{@code crawl_log} 是<b>按站点</b>存的
+     * （一次采集 3 条），没有"这几条属于同一次采集"的分组信息，
+     * 拼不出那个"新增 28 条 / 耗时 107 秒"的汇总数字，只能单独存一份快照。
+     */
+    public void saveLastSummary(CrawlSummary summary) {
+        if (summary == null) {
+            return;
+        }
+        prefs.edit()
+                .putString("lastSummaryStatus", summary.status == null ? "" : summary.status)
+                .putString("lastSummaryMessage", summary.message == null ? "" : summary.message)
+                .putString("lastSummaryTrigger", summary.triggerType == null ? "" : summary.triggerType)
+                .putString("lastSummaryFinishedAt",
+                        summary.finishedAt == null ? "" : summary.finishedAt.toString())
+                .putInt("lastSummaryCandidate", summary.candidateCount)
+                .putInt("lastSummaryExcluded", summary.excludedCount)
+                .putInt("lastSummaryMatched", summary.matchedCount)
+                .putInt("lastSummarySaved", summary.savedCount)
+                .putInt("lastSummaryDuplicate", summary.duplicateCount)
+                .putInt("lastSummaryFailed", summary.failedCount)
+                .putInt("lastSummaryVerified", summary.verifiedCount)
+                .putLong("lastSummaryRequests", summary.requestCount)
+                .putLong("lastSummaryDuration", summary.durationMs)
+                .apply();
+    }
+
+    /** 读回上次采集快照；从没采集过时返回 null，界面就照常显示"尚未执行采集"。 */
+    public CrawlSummary loadLastSummary() {
+        String status = prefs.getString("lastSummaryStatus", "");
+        if (status == null || status.isEmpty()) {
+            return null;
+        }
+        CrawlSummary summary = new CrawlSummary();
+        summary.status = status;
+        summary.message = prefs.getString("lastSummaryMessage", "");
+        summary.triggerType = prefs.getString("lastSummaryTrigger", "");
+        summary.finishedAt = parseStoredTime(prefs.getString("lastSummaryFinishedAt", ""));
+        summary.candidateCount = prefs.getInt("lastSummaryCandidate", 0);
+        summary.excludedCount = prefs.getInt("lastSummaryExcluded", 0);
+        summary.matchedCount = prefs.getInt("lastSummaryMatched", 0);
+        summary.savedCount = prefs.getInt("lastSummarySaved", 0);
+        summary.duplicateCount = prefs.getInt("lastSummaryDuplicate", 0);
+        summary.failedCount = prefs.getInt("lastSummaryFailed", 0);
+        summary.verifiedCount = prefs.getInt("lastSummaryVerified", 0);
+        summary.requestCount = prefs.getLong("lastSummaryRequests", 0L);
+        summary.durationMs = prefs.getLong("lastSummaryDuration", 0L);
+        return summary;
+    }
+
+    private static java.time.LocalDateTime parseStoredTime(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDateTime.parse(value);
+        } catch (Exception e) {
+            // 存的是我们自己写的 ISO 串，解析不了就当没有，不影响其它字段
+            return null;
+        }
     }
 
     public List<String> siteCodes() {

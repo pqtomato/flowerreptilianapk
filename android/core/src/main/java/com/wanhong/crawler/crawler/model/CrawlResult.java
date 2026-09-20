@@ -18,10 +18,35 @@ public class CrawlResult {
     private long durationMs;
     private String errorMessage;
     private final List<String> messages = new ArrayList<>();
+    /** 本次新入库的公告（只带标题/截止日期），供"采集完成"通知列出具体是哪些 */
+    private final List<NewTender> newItems = new ArrayList<>();
+    /** 新入库的"可投"公告总数 —— 列表会封顶，计数不能封顶，否则通知里的条数是错的 */
+    private int newItemCount;
+
+    /** 通知只列前几条，没必要把几百条都攒在内存里 */
+    private static final int MAX_NEW_ITEMS = 50;
 
     public CrawlResult(String siteCode, String siteName) {
         this.siteCode = siteCode;
         this.siteName = siteName;
+    }
+
+    public void addNewItem(NewTender item) {
+        if (item == null) {
+            return;
+        }
+        newItemCount++;
+        if (newItems.size() < MAX_NEW_ITEMS) {
+            newItems.add(item);
+        }
+    }
+
+    public List<NewTender> getNewItems() {
+        return newItems;
+    }
+
+    public int getNewItemCount() {
+        return newItemCount;
     }
 
     public void addMessage(String message) {

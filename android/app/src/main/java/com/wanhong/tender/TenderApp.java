@@ -7,6 +7,8 @@ import android.util.Log;
 import com.wanhong.tender.core.CrawlerHolder;
 import com.wanhong.tender.crawl.CrawlScheduler;
 import com.wanhong.tender.crawl.CrawlWorker;
+import com.wanhong.tender.crawl.ReminderNotifier;
+import com.wanhong.tender.crawl.ReminderScheduler;
 import com.wanhong.tender.server.LocalApiServer;
 
 /**
@@ -34,6 +36,7 @@ public class TenderApp extends Application {
         java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(holder.settings.timezone));
 
         CrawlWorker.ensureChannel(this);
+        ReminderNotifier.ensureChannel(this);
 
         try {
             server = new LocalApiServer(this);
@@ -44,6 +47,7 @@ public class TenderApp extends Application {
         }
 
         CrawlScheduler.schedule(this);
+        ReminderScheduler.schedule(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Log.i(TAG, "Android 13+ 需要用户授权通知权限，才能看到采集进度与结果提示");

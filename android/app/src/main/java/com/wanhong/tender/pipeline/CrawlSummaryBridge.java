@@ -27,6 +27,11 @@ public final class CrawlSummaryBridge {
         public int verifiedCount;
         public long requestCount;
         public long durationMs;
+        /** 本次新入库的"可投"公告（列表可能封顶），"采集完成"通知用它列具体条目 */
+        public java.util.List<com.wanhong.crawler.crawler.model.NewTender> newItems =
+                new java.util.ArrayList<>();
+        /** 新入库的"可投"公告总数（不封顶） */
+        public int newItemCount;
 
         public static Summary from(CrawlSummary source) {
             Summary summary = new Summary();
@@ -44,6 +49,8 @@ public final class CrawlSummaryBridge {
             summary.verifiedCount = source.verifiedCount;
             summary.requestCount = source.requestCount;
             summary.durationMs = source.durationMs;
+            summary.newItems = new java.util.ArrayList<>(source.newItems);
+            summary.newItemCount = source.newItemCount;
             return summary;
         }
     }
@@ -53,6 +60,9 @@ public final class CrawlSummaryBridge {
                               Integer lookbackDays, String triggerType,
                               ProgressListener listener) {
         CrawlSummary result = holder.engine.crawl(site, maxKeywords, lookbackDays, triggerType, listener);
+        // 顺手落一份快照：进程重启后「采集」页还能显示上次结果，而不是退回"尚未执行采集"。
+        // 所有采集（手动 / 定时）都走这里，是唯一的收口点。
+        holder.saveLastSummary(result);
         return Summary.from(result);
     }
 }

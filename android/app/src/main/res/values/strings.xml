@@ -4,4 +4,6 @@
     <string name="crawl_channel_name">采集任务</string>
     <string name="crawl_channel_desc">后台采集招标公告时的进度提示</string>
     <string name="crawl_running">正在采集招标公告…</string>
+    <string name="reminder_channel_name">重要提醒</string>
+    <string name="reminder_channel_desc">发现新公告、以及公告快到报名截止时间时提醒（建议保留，不要静音）</string>
 </resources>
