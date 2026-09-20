@@ -30,7 +30,27 @@ public class BudgetExtractor {
                     + "([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*(万元|万|元)");
 
     /**
-     * 最高限价：只取一小段文本（可能是单价或比例），不做数值解释。
+     * 单价后缀的单位白名单，形如 {@code /平方米/年}。
+     *
+     * <p>为什么必须白名单：币种后面直接跟着下一个字段时没有任何分隔符
+     * （{@code 3.4元/平方米/年采购需求}），靠"长度不超过 N 个字"分不出
+     * {@code /年} 和 {@code /年采购需求} —— 只有枚举出真实单位才切得干净。
+     */
+    private static final String UNIT_SUFFIX =
+            "(?:/(?:平方米|㎡|m2|公里|千米|公顷|亩|株|棵|个|台|套|项|人|天|年|月|日|次|米))*";
+
+    /**
+     * 最高限价（数值形态）：只取「数字 + 币种 + 可选单价单位」。
+     *
+     * <p>为什么要单独一条：真实公告里字段之间常常<b>没有分隔符</b>，
+     * 例如 {@code 最高限价：574099.03元采购需求：怀宁县…}。
+     * 用泛化的"取一段非空白文本"会把后面的「采购需求」一起吞进来。
+     */
+    private static final Pattern CAP_AMOUNT = Pattern.compile(
+            "最高限价[：: \\t]*([0-9][0-9,]*(?:\\.[0-9]+)?\\s*(?:万元|万|元)" + UNIT_SUFFIX + ")");
+
+    /**
+     * 最高限价（文字形态）：单价说明、比例、甚至一段解释。
      *
      * <p>两个细节都是踩出来的：
      * <ul>
@@ -40,7 +60,7 @@ public class BudgetExtractor {
      *       冒号本身会被当成限价文本抓进来。</li>
      * </ul>
      */
-    private static final Pattern CAP = Pattern.compile(
+    private static final Pattern CAP_TEXT = Pattern.compile(
             "最高限价[：: \\t]*([^\\s，。；;、：:]{1,40})");
 
     /** 项目编号：值基本是 ASCII 字母数字加连字符，遇到中文自然停下 */
@@ -93,11 +113,16 @@ public class BudgetExtractor {
     }
 
     private String parseCap(String content) {
-        Matcher matcher = CAP.matcher(content);
-        if (!matcher.find()) {
+        // 先试"数字 + 单位"：这种情况后面常常直接跟着下一个字段，不能贪心
+        Matcher amount = CAP_AMOUNT.matcher(content);
+        if (amount.find()) {
+            return amount.group(1).trim();
+        }
+        Matcher text = CAP_TEXT.matcher(content);
+        if (!text.find()) {
             return null;
         }
-        String captured = matcher.group(1).trim();
+        String captured = text.group(1).trim();
         // 全是数字说明抓到的是下一行的序号之类，不是限价
         return captured.matches("[0-9.,]+") ? null : captured;
     }

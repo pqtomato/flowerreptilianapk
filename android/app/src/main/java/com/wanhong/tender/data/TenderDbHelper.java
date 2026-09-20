@@ -25,8 +25,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
      * v2：新增 notice_type（公告类型），用于默认过滤掉"成交 / 合同"这类非可投公告
      * v3：订正数据 —— 清掉非可投公告上已经存进去的"估算截止日"
      * v4：新增 budget_yuan / budget_cap_text / project_code（预算金额、最高限价原文、项目编号）
+     * v5：订正数据 —— 重新解析金额相关字段（v4 的「最高限价」会吞掉后面紧邻的字段）
      */
-    public static final int DB_VERSION = 4;
+    public static final int DB_VERSION = 5;
 
     public static final String TABLE_TENDER = "tender";
     public static final String TABLE_KEYWORD = "crawler_keyword";
@@ -126,6 +127,14 @@ public class TenderDbHelper extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN budget_yuan INTEGER");
             db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN budget_cap_text TEXT");
             db.execSQL("ALTER TABLE " + TABLE_TENDER + " ADD COLUMN project_code TEXT");
+            backfillBudget(db);
+        }
+        if (oldVersion < 5) {
+            // v4 的「最高限价」取值会吞掉紧邻的下一个字段
+            //（实测存成了 "574099.03元采购需求"）。清空后按新正则重解析。
+            // 爬虫那条自愈路径只在字段为空时才跑，所以必须在这里主动订正。
+            db.execSQL("UPDATE " + TABLE_TENDER
+                    + " SET budget_yuan=NULL, budget_cap_text=NULL, project_code=NULL");
             backfillBudget(db);
         }
     }

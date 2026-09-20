@@ -3,12 +3,15 @@ package com.wanhong.tender.ui;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.provider.CalendarContract;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,9 +24,13 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.wanhong.tender.R;
 import com.wanhong.tender.server.LocalApiServer;
+
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * 主界面：WebView 加载应用内的本地服务地址（127.0.0.1）。
@@ -157,6 +164,68 @@ public class MainActivity extends Activity {
         public void openBatterySettings() {
             runOnUiThread(MainActivity.this::requestIgnoreBatteryOptimizations);
         }
+
+        /** 把投标截止时间写进系统日历。deadlineIso 是 LocalDateTime.toString()。 */
+        @android.webkit.JavascriptInterface
+        public void addToCalendar(final String title, final String deadlineIso, final String url) {
+            runOnUiThread(() -> MainActivity.this.addToCalendar(title, deadlineIso, url));
+        }
+
+        @android.webkit.JavascriptInterface
+        public void share(final String title, final String url) {
+            runOnUiThread(() -> MainActivity.this.shareTender(title, url));
+        }
+
+        @android.webkit.JavascriptInterface
+        public void copyText(final String text) {
+            runOnUiThread(() -> MainActivity.this.copyText(text));
+        }
+    }
+
+    /**
+     * 插入一条日历事件。
+     *
+     * <p>用 {@code ACTION_INSERT} 交给系统日历应用处理：不需要任何权限，
+     * 也不替用户决定用哪个日历账号。<b>不硬塞提醒时间</b> ——
+     * 每个日历应用的默认提醒策略不同，替用户决定反而和习惯打架。
+     */
+    private void addToCalendar(String title, String deadlineIso, String url) {
+        try {
+            LocalDateTime deadline = LocalDateTime.parse(deadlineIso);
+            long begin = deadline.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            Intent intent = new Intent(Intent.ACTION_INSERT)
+                    .setData(CalendarContract.Events.CONTENT_URI)
+                    .putExtra(CalendarContract.Events.TITLE, "投标截止：" + title)
+                    .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
+                    .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, begin + 3600_000L)
+                    .putExtra(CalendarContract.Events.DESCRIPTION,
+                            "报名/投标截止时间（来自「花卉招标监控」）\n" + (url == null ? "" : url));
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "没有可用的日历应用", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareTender(String title, String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, title)
+                    .putExtra(Intent.EXTRA_TEXT, title + "\n" + (url == null ? "" : url));
+            startActivity(Intent.createChooser(intent, "分享公告"));
+        } catch (Exception e) {
+            Toast.makeText(this, "没有可用的分享目标", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 用原生剪贴板，不用 navigator.clipboard —— 页面失焦时 WebView 会被系统拒绝剪贴板访问。 */
+    private void copyText(String text) {
+        ClipboardManager manager = getSystemService(ClipboardManager.class);
+        if (manager == null) {
+            return;
+        }
+        manager.setPrimaryClip(ClipData.newPlainText("花卉招标监控", text));
+        Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
     }
 
     private void showError(String message) {

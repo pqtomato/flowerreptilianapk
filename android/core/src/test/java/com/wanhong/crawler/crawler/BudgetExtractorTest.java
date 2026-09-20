@@ -54,6 +54,19 @@ class BudgetExtractorTest {
     }
 
     @Test
+    @DisplayName("最高限价：字段之间没分隔符时不能吞掉后面的字段")
+    void capStopsAtNextField() {
+        // 实测正文原样：最高限价 和 采购需求 之间没有任何分隔符。
+        // 早期实现会把「采购需求」一起吞进来，详情页显示成
+        //  最高限价：574099.03元采购需求
+        assertEquals("574099.03元", extractor.extract(
+                "竞争性磋商预算金额：574099.03元最高限价：574099.03元采购需求：怀宁县2026年度和美乡村").capText());
+        assertEquals("60万元", extractor.extract("最高限价：60万元采购需求：桐城师范").capText());
+        // 单价后缀要保留，但同样不能吞掉后面的字段
+        assertEquals("3.4元/平方米/年", extractor.extract("最高限价：3.4元/平方米/年采购需求：高新区").capText());
+    }
+
+    @Test
     @DisplayName("项目编号：两个编号取第一个 / 无冒号 / 中文紧贴要截断")
     void parsesProjectCode() {
         assertEquals("H0FSCG26D03G0397",
