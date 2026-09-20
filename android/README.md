@@ -170,38 +170,56 @@ android/
 
 ### 环境
 
-- JDK 17
-- Android SDK：platform 35 + build-tools 35（本项目构建机器上已有）
-- Gradle 8.7（仓库自带 wrapper，`gradlew` 会自动下载）
-- `android/local.properties` 里指向你的 SDK（该文件与机器相关，已 gitignore）
+| 依赖 | 要求 | 本机现状（换机后实测） |
+| --- | --- | --- |
+| JDK | 17（21 亦可） | **JDK 21.0.11**；字节码仍按 `release 17` 编译，58 个测试全过 |
+| Gradle | 8.7 | wrapper 已入库（`gradlew` / `gradlew.bat` / `gradle/wrapper/`），首次运行自动下载 |
+| Android SDK | platform-35 + build-tools 35.0.0 + platform-tools | 装在 `D:/Android/Sdk` |
+| `android/local.properties` | 指向本机 SDK | 已生成；与机器相关，已 gitignore，**不入库** |
 
 ```properties
-sdk.dir=C:/Users/<你的用户名>/AppData/Local/Android/Sdk
+# android/local.properties
+sdk.dir=D:/Android/Sdk
 ```
+
+> 从零装 SDK（约 300 MB，需要接受 Google 许可）：
+>
+> ```powershell
+> # 1) 下载 commandline-tools 的 zip，解压成 D:\Android\Sdk\cmdline-tools\latest\
+> # 2) 装组件
+> $sm = 'D:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat'
+> & $sm --sdk_root=D:\Android\Sdk --licenses
+> & $sm --sdk_root=D:\Android\Sdk --install 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+> ```
+>
+> Gradle 发行包走 `gradle/wrapper/gradle-wrapper.properties` 里的腾讯云镜像
+> （官方 `services.gradle.org` 在国内常连不上，`gradle wrapper` 任务甚至会直接报
+> `Test of distribution url ... failed`），并带 `distributionSha256Sum` 校验。
 
 ### 命令
 
-```bash
+```powershell
 cd android
 
-# 跑内核单测（50 个，不联网）
-gradle :core:test
+# 内核单测：57 个离线用例 + 1 个联调用例（默认跳过）
+.\gradlew.bat :core:test
 
 # 真实站点联调（联网，约 1 分钟）
-gradle :core:test --tests '*LiveCrawlIT' -Dlive=true
+.\gradlew.bat :core:test --tests '*LiveCrawlIT' -Dlive=true
 #   报告会写到 android/core/build/live-crawl-report.txt
 
 # 出安装包
-gradle :app:assembleRelease     # -> app/build/outputs/apk/release/app-release.apk
-gradle :app:assembleDebug       # -> app/build/outputs/apk/debug/app-debug.apk
+.\gradlew.bat :app:assembleRelease     # -> app/build/outputs/apk/release/app-release.apk
+.\gradlew.bat :app:assembleDebug       # -> app/build/outputs/apk/debug/app-debug.apk
 
 # 代码/资源静态检查（会检查低版本安卓不存在的 API 调用）
-gradle :app:lintDebug
+.\gradlew.bat :app:lintDebug
 ```
 
-用 Android Studio 打开 `android/` 目录即可（它会识别为 Gradle 工程，可直接运行到手机）。
+> Linux / macOS 把 `.\gradlew.bat` 换成 `./gradlew`。
+> 用 Android Studio 打开 `android/` 目录即可（它会识别为 Gradle 工程，可直接运行到手机）。
 
-> 国内网络下构建：`settings.gradle` 已把阿里云镜像放在最前面，正常能拉动依赖。
+> 国内网络下构建：`settings.gradle` 已把阿里云镜像放在最前面；Gradle 发行包走 wrapper 里的腾讯云镜像，正常能拉动依赖。
 
 ---
 
@@ -231,6 +249,8 @@ gradle :app:lintDebug
 | 截止日期显示「估算」 | 正文里没写报名/投标截止时间，按「发布日 + 60 天」估算。投标前请以原文为准 |
 | 通知栏没有进度 | 通知权限没给；或系统把应用的后台通知关了 |
 | 想清空数据重来 | 系统设置里清除应用数据，或卸载重装（数据库在应用私有目录） |
+| **一点「开始采集」应用就闪退**（Android 14 模拟器/真机实测必现） | **踩过一次**：`CrawlWorker` 用的是 `new ForegroundInfo(id, notification)`，而 WorkManager 2.9.1 的这个两参构造函数内部写死 `foregroundServiceType = 0`（NONE）；Android 14 + targetSdk 34 禁止以「无类型」启动前台服务，于是抛 `InvalidForegroundServiceTypeException: Starting FGS with type none` 并杀进程。**清单里声明 `dataSync` 也没用**，会被这个显式 0 覆盖。修法：改用三参构造，显式传 `FOREGROUND_SERVICE_TYPE_DATA_SYNC` |
+| 换机器后 `:app` 编译报「找不到符号 / 程序包 com.wanhong.tender.data 不存在」 | **踩过一次**：`.gitignore` 里写的是不带斜杠的 `data/`，它匹配任意层级的 `data` 目录，把安卓源码包 `app/src/main/java/com/wanhong/tender/data/`（SQLite 数据层三个类）一起忽略了 —— 这几个文件从来没进过 git，一拉代码就编译不过。已改成锚定根目录的 `/data/`；万一再遇到，用 `node tools/dsh-recover-files-from-session.mjs --log <会话日志> --match "tender/data" --out . --crlf` 从会话日志里恢复 |
 
 ---
 
@@ -238,22 +258,38 @@ gradle :app:lintDebug
 
 **已验证**（在这台电脑上）：
 
-- 内核 50 个单元测试全部通过，其中包含**整条采集链路的离线端到端测试**
-  （假的站点采集器 + 假的 HTTP + 内存存储，覆盖关键词过滤、排除词、截止日期解析与估算、
-  区县、去重、增量、正文兜底、计数）；
+- 内核 **58 个单元测试**（57 个离线用例全过，1 个真实站点联调用例默认跳过），其中包含
+  **整条采集链路的离线端到端测试**（假的站点采集器 + 假的 HTTP + 内存存储，覆盖关键词过滤、
+  排除词、截止日期解析与估算、区县、去重、增量、正文兜底、计数）；
 - **真实站点联调通过**：三个站点全部采到数据（19 条，0 失败），
   正文、截止日期（正文解析 / 估算）、区县、分类、链接状态都正确 ——
   这说明移植到安卓后采集逻辑没有走样；
 - 安卓 App 编译通过并打出可安装的 release APK（已签名），
-  manifest 合并、`foregroundServiceType`、词表资源打包、assets 页面打包均已核对；
+  manifest 合并、词表资源打包、assets 页面打包均已核对；
 - Android Lint 无 `NewApi` 问题（即没有调用低版本安卓不存在的 API，不会一启动就崩）；
 - 页面静态自检通过（JS 语法、61 个元素 id、手机端适配项）。
 
-**未验证**（因为这台机器没有连接手机、也没有可用的模拟器镜像）：
+**已在 Android 14 模拟器上跑通**（雷电模拟器：Android 14 / API 34 / x86_64 / 1920x1080）：
 
-- 真机上的界面渲染效果、WebView + 本地服务在真机上的表现；
+- release APK 安装、启动、界面渲染正常；WebView + 应用内本地服务（`127.0.0.1:8765`）正常；
+- **从页面触发一次真实全量采集，完整跑完**：
+  候选 68 → 排除 23 → 命中 28 → 新增 28，失败 0，143 次请求 / 107 秒；
+  入库数据的标题 / 区县 / 分类 / 截止日期 / 命中的关键词 / 链接状态都正确；
+- 采集期间前台服务通知正常挂出（渠道「采集任务」），进程全程未被系统杀掉；
+- 权限与后台行为：`POST_NOTIFICATIONS` 授权流程正常，Android 14 的
+  `Background started FGS: Allowed` 放行，无 `ForegroundServiceStartNotAllowedException`。
+
+> 这一轮实测**抓出一个必现闪退**：一点「开始采集」就崩
+> （`InvalidForegroundServiceTypeException: Starting FGS with type none`）。
+> 上一版文档写的"`foregroundServiceType` 已核对"是**错的** —— 清单里声明了 `dataSync`，
+> 但 `CrawlWorker` 用 WorkManager 的两参 `ForegroundInfo` 构造函数，它内部把类型写死成 `0`，
+> 覆盖了清单声明。已改用三参构造显式传 `FOREGROUND_SERVICE_TYPE_DATA_SYNC`，详见第八节常见问题。
+
+**仍未验证**：
+
+- 真机（尤其是小米 / 华为 / OPPO 等国产 ROM）上的界面渲染与后台存活；
 - 定时任务在具体机型 ROM 上的实际执行情况（受各家省电策略影响很大）；
-- 通知在 Android 13/14 上的展示细节。
+- 通知在真机 Android 13/14 上的展示细节（模拟器上只能确认通知已挂出）。
 
 装到手机上后如果哪里不对，用这个抓日志发我，定位很快：
 

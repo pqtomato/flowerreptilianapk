@@ -36,7 +36,11 @@ target/
 .settings/
 
 # ---------------- 采集运行时数据（旧版 H2 数据库文件）----------------
-data/
+# 必须锚定到仓库根目录！写成不带斜杠的 `data/` 会匹配任意层级的 data 目录，
+# 把安卓源码包 android/app/src/main/java/com/wanhong/tender/data/ 一起忽略掉，
+# 导致 SQLite 数据层（TenderDbHelper / SqliteTenderRepository / SqliteKeywordStore）
+# 从来没被提交过 —— 换机器一拉代码就编译不过。
+/data/
 *.mv.db
 *.trace.db
 
@@ -58,4 +62,7 @@ android/local.properties
 # ---------------- 系统文件 ----------------
 .DS_Store
 Thumbs.db
+
+# ---------------- 模拟器 / 真机日志（tools/emulator-log-monitor.ps1 产出）----------------
+logs/
 

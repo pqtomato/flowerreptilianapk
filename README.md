@@ -24,6 +24,9 @@
 | `src/` + `pom.xml` | 上一版 **Spring Boot + 网页** 服务，**已停用**，仅作参考保留（其中 `src/main/resources/keywords/*.txt` 的词表已复制到 `android/core`，后续以安卓侧为准） |
 | `参考资料借鉴说明.md` | 对照前一代 Python 系统，说明哪些运营经验被采纳、哪些被刻意放弃 |
 | `tools/check-mobile-page.js` | 页面静态自检脚本（JS 语法、元素 id、手机端适配项） |
+| `tools/dsh-history-import.mjs` | 换机器时把 DSH 会话历史迁移包合并进本机 `~/.dsh`（幂等，含校验与备份） |
+| `tools/dsh-verify-with-dsh-reader.mjs` | 用 DSH 自己的存储后端复读会话日志，证明"导入的历史真能读出来" |
+| `tools/dsh-recover-files-from-session.mjs` | **从会话日志恢复文件**（重放 write/edit）；还能用 `--check-missing` 对照磁盘找出被漏掉的文件 |
 
 > 停用的 Spring Boot 版仍然可以 `mvn clean package` 构建运行，但它<b>不再接收功能更新</b>；
 > 所有新功能都在安卓侧。若确认不再需要，可以删除根目录的 `pom.xml` 与 `src/`。

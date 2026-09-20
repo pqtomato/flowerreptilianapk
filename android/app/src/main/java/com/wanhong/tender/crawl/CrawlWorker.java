@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -81,7 +82,19 @@ public class CrawlWorker extends Worker {
                 .setOnlyAlertOnce(true)
                 .setContentIntent(pending)
                 .setPriority(NotificationCompat.PRIORITY_LOW);
-        return new ForegroundInfo(NOTIFICATION_ID, builder.build());
+
+        // 必须用三参构造函数显式给出前台服务类型。
+        // 踩过的坑：WorkManager 2.9.1 的两参 ForegroundInfo(id, notification) 内部写死
+        // type = 0（FOREGROUND_SERVICE_TYPE_NONE），而 Android 14 + targetSdk 34 禁止
+        // 以「无类型」启动前台服务，于是采集一开始就抛
+        //   InvalidForegroundServiceTypeException: Starting FGS with type none
+        // 整个进程被杀 —— 清单里声明的 dataSync 会被这个显式 0 覆盖掉，救不了。
+        // 采集是「上传/下载数据」性质，用 dataSync，与清单的
+        // android:foregroundServiceType="dataSync" 以及 FOREGROUND_SERVICE_DATA_SYNC 权限保持一致。
+        int foregroundServiceType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ? ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                : 0;
+        return new ForegroundInfo(NOTIFICATION_ID, builder.build(), foregroundServiceType);
     }
 
     public static void ensureChannel(Context context) {
