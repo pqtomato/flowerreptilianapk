@@ -39,6 +39,18 @@ class DateUtilsTest {
     }
 
     @Test
+    @DisplayName("「15点00分」也要解析出时分，不能只剩 00:00")
+    void parsesDianAsHourMinuteSeparator() {
+        // 实测原文：…并于2026年09月24日15点00分（北京时间）前提交响应文件
+        // 不接受「点」的话时分被丢掉，截止当天上午就会被判成"已截止"。
+        assertEquals(LocalDateTime.of(2026, 9, 24, 15, 0),
+                DateUtils.parseFromText("并于2026年09月24日15点00分（北京时间）前提交响应文件"));
+        assertEquals(LocalDateTime.of(2026, 9, 24, 15, 0), DateUtils.parse("2026年09月24日15点00分"));
+        // 只有"点"没有"分"也要认
+        assertEquals(LocalDateTime.of(2026, 9, 24, 15, 0), DateUtils.parse("2026年09月24日15点"));
+    }
+
+    @Test
     @DisplayName("从带前缀的文本中抽取日期")
     void parsesFromText() {
         assertEquals(LocalDateTime.of(2026, 9, 16, 16, 31),

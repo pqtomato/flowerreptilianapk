@@ -14,10 +14,19 @@ import java.util.regex.Pattern;
  */
 public final class DateUtils {
 
+    /**
+     * 中文日期串。
+     *
+     * <p>时与分之间的分隔符要收全：政府公告里 {@code 15点00分} 这种写法很常见
+     * （实测「…并于2026年09月24日15点00分（北京时间）前提交响应文件」）。
+     * 不接受「点」的话，时分会被整段丢掉，只剩 00:00 ——
+     * 于是截止当天上午就被判成"已截止"，而实际还能投到下午三点。
+     */
     private static final Pattern CN_DATE = Pattern.compile(
             "(\\d{4})\\s*[-/年.]\\s*(\\d{1,2})\\s*[-/月.]\\s*(\\d{1,2})"
                     + "[日号]?"
-                    + "(?:\\s*[ T]?\\s*(\\d{1,2})\\s*[:：时]\\s*(\\d{1,2})"
+                    // 分钟可省：「15点」和「15点00分」都要认
+                    + "(?:\\s*[ T]?\\s*(\\d{1,2})\\s*[:：时点]\\s*(\\d{1,2})?"
                     + "(?:\\s*[:：分]\\s*(\\d{1,2}))?)?");
 
     private static final DateTimeFormatter[] DATE_TIME_FORMATTERS = {

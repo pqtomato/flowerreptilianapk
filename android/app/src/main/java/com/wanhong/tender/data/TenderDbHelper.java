@@ -7,8 +7,11 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import com.wanhong.crawler.common.NoticeType;
+import com.wanhong.crawler.config.CrawlerSettings;
 import com.wanhong.crawler.crawler.BudgetExtractor;
+import com.wanhong.crawler.crawler.DeadlineExtractor;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,8 +29,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
      * v3：订正数据 —— 清掉非可投公告上已经存进去的"估算截止日"
      * v4：新增 budget_yuan / budget_cap_text / project_code（预算金额、最高限价原文、项目编号）
      * v5：订正数据 —— 重新解析金额相关字段（v4 的「最高限价」会吞掉后面紧邻的字段）
+     * v6：订正数据 —— 重新解析截止时间（修正前「15点00分」的时分会被丢掉）
      */
-    public static final int DB_VERSION = 5;
+    public static final int DB_VERSION = 6;
 
     public static final String TABLE_TENDER = "tender";
     public static final String TABLE_KEYWORD = "crawler_keyword";
@@ -136,6 +140,61 @@ public class TenderDbHelper extends SQLiteOpenHelper {
             db.execSQL("UPDATE " + TABLE_TENDER
                     + " SET budget_yuan=NULL, budget_cap_text=NULL, project_code=NULL");
             backfillBudget(db);
+        }
+        if (oldVersion < 6) {
+            reparseParsedDeadlines(db);
+        }
+    }
+
+    /** {@code DeadlineExtractor} 解析成功时写进 deadline_source 的值。 */
+    private static final String DEADLINE_SOURCE_PARSED = "正文解析";
+
+    /**
+     * v5 → v6 数据订正：重新解析"正文解析"出来的截止时间。
+     *
+     * <p>修正前 {@code 15点00分} 这类写法里的时分会被整段丢掉、只剩 00:00 ——
+     * 于是截止当天上午就被判成"已截止"，而实际还能投到下午三点。
+     *
+     * <p>只重解析 source 为「正文解析」的：估算出来的日期不受这次修正影响。
+     * <b>保守更新</b>：只有重新解析成功才覆盖，解析不出来就保留原值，
+     * 免得"订正"反而把某些记录的截止时间弄丢。
+     */
+    private void reparseParsedDeadlines(SQLiteDatabase db) {
+        DeadlineExtractor extractor = new DeadlineExtractor(new CrawlerSettings());
+        Map<Long, LocalDateTime> reparsed = new HashMap<>();
+        Cursor cursor = db.rawQuery("SELECT id, content, summary, publish_date FROM " + TABLE_TENDER
+                + " WHERE deadline_source='" + DEADLINE_SOURCE_PARSED + "'", null);
+        try {
+            while (cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                String content = cursor.getString(1);
+                String summary = cursor.getString(2);
+                LocalDateTime publishDate = parseIso(cursor.getString(3));
+                String text = (content != null && !content.trim().isEmpty()) ? content : summary;
+                // allowEstimate=false：原文里本来就有日期，重解析不该把它变成"估算值"
+                DeadlineExtractor.Deadline deadline = extractor.resolve(text, publishDate, false);
+                if (deadline.date() != null) {
+                    reparsed.put(id, deadline.date());
+                }
+            }
+        } finally {
+            cursor.close();
+        }
+        for (Map.Entry<Long, LocalDateTime> entry : reparsed.entrySet()) {
+            ContentValues values = new ContentValues();
+            values.put("deadline_date", entry.getValue().toString());
+            db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(entry.getKey())});
+        }
+    }
+
+    private static LocalDateTime parseIso(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(value);
+        } catch (Exception e) {
+            return null;
         }
     }
 
