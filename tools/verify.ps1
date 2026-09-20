@@ -50,7 +50,12 @@ try {
 Write-Host "`n===== 2/3 内核单测 =====" -ForegroundColor Cyan
 Push-Location $androidDir
 try {
-    $tasks = if ($SkipBuild) { ':core:test' } else { ':core:test', ':app:assembleRelease' }
+    # 必须显式建成数组：@splat 一个 String 变量时 PowerShell 只传过去一个 ':'，
+    # Gradle 会报 "Cannot locate tasks that match ':'"（实测踩过，只在 -SkipBuild 时触发）
+    $tasks = @(':core:test')
+    if (-not $SkipBuild) {
+        $tasks += ':app:assembleRelease'
+    }
     & $gradlew @tasks --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) {
         $failed += if ($SkipBuild) { '内核单测' } else { '内核单测 / 打包' }
