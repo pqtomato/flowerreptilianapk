@@ -207,7 +207,6 @@ public final class CrawlerHolder {
     public boolean isReminderEnabled() {
         return prefs.getBoolean("reminderEnabled", true);
     }
-
     public void setReminderEnabled(boolean enabled) {
         prefs.edit().putBoolean("reminderEnabled", enabled).apply();
     }
@@ -220,6 +219,22 @@ public final class CrawlerHolder {
     public void setReminderDays(int days) {
         int clamped = Math.max(1, Math.min(30, days));
         prefs.edit().putInt("reminderDays", clamped).apply();
+    }
+
+    // ------------------------------------------------------ 数据保留
+
+    /**
+     * 已截止的公告保留多少天后可以清理（默认 180 天）。
+     *
+     * <p>只作为"清理"按钮的默认阈值，<b>不会自动删除任何东西</b> ——
+     * 公告删了就得重新采集，而下架过的可能再也抓不到，所以清理必须是用户主动触发。
+     */
+    public int getRetentionDays() {
+        return prefs.getInt("retentionDays", 180);
+    }
+
+    public void setRetentionDays(int days) {
+        prefs.edit().putInt("retentionDays", Math.max(1, Math.min(3650, days))).apply();
     }
 
     // ------------------------------------------------------ 上次采集结果快照

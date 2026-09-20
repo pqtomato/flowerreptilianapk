@@ -206,6 +206,41 @@ public class InMemoryTenderRepository implements TenderRepository {
     }
 
     @Override
+    public long countPurgeable(LocalDateTime deadlineBefore, boolean keepTracked) {
+        long count = 0;
+        for (TenderRecord record : store.values()) {
+            if (purgeable(record, deadlineBefore, keepTracked)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public int purgeExpired(LocalDateTime deadlineBefore, boolean keepTracked) {
+        List<Long> doomed = new ArrayList<>();
+        for (Map.Entry<Long, TenderRecord> entry : store.entrySet()) {
+            if (purgeable(entry.getValue(), deadlineBefore, keepTracked)) {
+                doomed.add(entry.getKey());
+            }
+        }
+        for (Long id : doomed) {
+            store.remove(id);
+        }
+        return doomed.size();
+    }
+
+    private static boolean purgeable(TenderRecord record, LocalDateTime deadlineBefore, boolean keepTracked) {
+        if (record == null || record.deadlineDate == null) {
+            return false;
+        }
+        if (keepTracked && record.tracked) {
+            return false;
+        }
+        return record.deadlineDate.isBefore(deadlineBefore);
+    }
+
+    @Override
     public int markAllRead() {
         int count = 0;
         for (TenderRecord record : store.values()) {

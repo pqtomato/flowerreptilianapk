@@ -69,6 +69,32 @@ public class SqliteTenderRepository implements TenderRepository {
     }
 
     @Override
+    public long countPurgeable(LocalDateTime deadlineBefore, boolean keepTracked) {
+        String sql = "SELECT COUNT(*) FROM " + TenderDbHelper.TABLE_TENDER
+                + " WHERE deadline_date IS NOT NULL AND deadline_date < ?"
+                + (keepTracked ? " AND tracked=0" : "");
+        return scalar(sql, iso(deadlineBefore));
+    }
+
+    @Override
+    public int purgeExpired(LocalDateTime deadlineBefore, boolean keepTracked) {
+        String where = "deadline_date IS NOT NULL AND deadline_date < ?"
+                + (keepTracked ? " AND tracked=0" : "");
+        int deleted = helper.getWritableDatabase().delete(
+                TenderDbHelper.TABLE_TENDER, where, new String[]{iso(deadlineBefore)});
+        if (deleted > 0) {
+            // 删完不 VACUUM 的话文件大小不会变（SQLite 只是把页标成空闲），
+            // 而用户点"清理"最直观的期待就是"占用变小"
+            try {
+                helper.getWritableDatabase().execSQL("VACUUM");
+            } catch (Exception ignored) {
+                // VACUUM 失败不影响删除结果，忽略
+            }
+        }
+        return deleted;
+    }
+
+    @Override
     public long count() {
         return scalar("SELECT COUNT(*) FROM " + TenderDbHelper.TABLE_TENDER);
     }

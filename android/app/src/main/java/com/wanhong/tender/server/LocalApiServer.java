@@ -183,6 +183,13 @@ public class LocalApiServer extends NanoHTTPD {
         if ("/api/crawl/sites".equals(uri)) {
             return json(siteStatuses());
         }
+        // 数据体积与可清理量：让"库只增不减"这件事对用户可见
+        if ("/api/storage/stats".equals(uri)) {
+            return json(storageStats());
+        }
+        if ("/api/storage/purge".equals(uri) && method == Method.POST) {
+            return json(purgeStorage(params));
+        }
 
         // ---- 应用设置 ----
         if ("/api/app/settings".equals(uri)) {
@@ -330,6 +337,53 @@ public class LocalApiServer extends NanoHTTPD {
         return status;
     }
 
+    /**
+     * 数据体积与可清理量。
+     *
+     * <p>「可清理」的口径与清理接口完全一致（已截止 + 超过保留期 + 非收藏），
+     * 否则按钮上写 12 条、实际删 3 条，用户会以为程序坏了。
+     */
+    private Map<String, Object> storageStats() {
+        int keepDays = holder.getRetentionDays();
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusDays(keepDays);
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("tenderCount", holder.repository.count());
+        map.put("retentionDays", keepDays);
+        map.put("purgeable", holder.repository.countPurgeable(cutoff, true));
+        map.put("dbBytes", databaseBytes());
+        map.put("dbPath", context.getDatabasePath(
+                com.wanhong.tender.data.TenderDbHelper.DB_NAME).getAbsolutePath());
+        return map;
+    }
+
+    /** 清理已截止且超过保留期的公告（收藏项不动）。只由用户主动触发，绝不自动删。 */
+    private Map<String, Object> purgeStorage(Map<String, String> params) {
+        int keepDays = Math.max(1, intParam(params, "keepDays", holder.getRetentionDays()));
+        holder.setRetentionDays(keepDays);
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusDays(keepDays);
+        int deleted = holder.repository.purgeExpired(cutoff, true);
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("deleted", deleted);
+        map.put("keepDays", keepDays);
+        map.put("tenderCount", holder.repository.count());
+        map.put("dbBytes", databaseBytes());
+        return map;
+    }
+
+    /** 数据库文件 + WAL/SHM 的总大小（WAL 模式小文件，但用户看的是"占用"）。 */
+    private long databaseBytes() {
+        String name = com.wanhong.tender.data.TenderDbHelper.DB_NAME;
+        long bytes = 0;
+        for (String suffix : new String[]{"", "-wal", "-shm"}) {
+            java.io.File file = context.getDatabasePath(name + suffix);
+            if (file != null && file.exists()) {
+                bytes += file.length();
+            }
+        }
+        return bytes;
+    }
+
     private Map<String, Object> appSettings() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("scheduleEnabled", holder.isScheduleEnabled());
@@ -339,6 +393,7 @@ public class LocalApiServer extends NanoHTTPD {
         map.put("verifyLink", holder.isVerifyLink());
         map.put("reminderEnabled", holder.isReminderEnabled());
         map.put("reminderDays", holder.getReminderDays());
+        map.put("retentionDays", holder.getRetentionDays());
         map.put("insecureHosts", holder.transport.insecureHosts());
         map.put("dbPath", context.getDatabasePath(com.wanhong.tender.data.TenderDbHelper.DB_NAME).getAbsolutePath());
         return map;
@@ -365,6 +420,9 @@ public class LocalApiServer extends NanoHTTPD {
         }
         if (params.containsKey("reminderDays")) {
             holder.setReminderDays(intParam(params, "reminderDays", holder.getReminderDays()));
+        }
+        if (params.containsKey("retentionDays")) {
+            holder.setRetentionDays(intParam(params, "retentionDays", holder.getRetentionDays()));
         }
         CrawlScheduler.schedule(context);
         // 提醒任务的触发时间跟着"每天几点采集"走，收藏/时间改了都要重排

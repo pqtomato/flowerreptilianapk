@@ -35,6 +35,21 @@ public interface TenderRepository {
     /** 只取命中词列，用于统计每个关键词命中多少条 */
     List<String> allMatchedKeywords();
 
+    /**
+     * 已截止且早于 {@code deadlineBefore} 的公告条数（清理前的预览）。
+     *
+     * @param keepTracked 收藏项算不算数；true 表示收藏的不参与清理
+     */
+    long countPurgeable(java.time.LocalDateTime deadlineBefore, boolean keepTracked);
+
+    /**
+     * 删除已截止且早于 {@code deadlineBefore} 的公告，返回删除条数。
+     *
+     * <p>只删"确实没用了"的：已截止 <b>且</b> 超过保留期；收藏项永不删除。
+     * 宁可少删也不能误删 —— 公告一旦删掉就得重新采集，而下架过的可能再也抓不到。
+     */
+    int purgeExpired(java.time.LocalDateTime deadlineBefore, boolean keepTracked);
+
     /** 全部标记已读，返回更新条数 */
     int markAllRead();
 
