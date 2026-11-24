@@ -425,6 +425,7 @@
                     <option value="aqggzy">安庆公共资源交易网</option>
                     <option value="cgj">安庆市城管局</option>
                     <option value="wyxmzx">安庆阳光采购平台</option>
+                    <option value="zh0556">安庆交控集采平台</option>
                 </select>
             </div>
             <div class="field">
@@ -606,7 +607,7 @@
                 采集策略：<br/>
                 · 公共资源交易网 / 阳光采购平台走站内检索接口，按关键词逐词检索；<br/>
                 · 城管局解析服务端渲染的列表页；<br/>
-                · 默认只采集最近 30 天的公告，并按「发布时间 + 60 天」估算报名截止日期；<br/>
+                · 默认只采集最近 30 天的公告；报名截止日期只取正文里写明的日期，解析不到就显示「截止日期未知」；<br/>
                 · 采集后会抽查已入库公告是否已下架，避免点开是死链。<br/><br/>
                 <a href="/api/tenders?size=5" target="_blank">接口 JSON</a> ·
                 <a href="/api/crawl/keywords" target="_blank">词表</a> ·
@@ -639,6 +640,7 @@
                 <option value="aqggzy">安庆公共资源交易网</option>
                 <option value="cgj">安庆市城管局</option>
                 <option value="wyxmzx">安庆阳光采购平台</option>
+                <option value="zh0556">安庆交控集采平台</option>
             </select>
         </div>
         <div class="field">
@@ -694,7 +696,8 @@
     const SITE_LABELS = {
         aqggzy: '公共资源交易网',
         cgj: '城管局',
-        wyxmzx: '阳光采购平台'
+        wyxmzx: '阳光采购平台',
+        zh0556: '交控集采平台'
     };
 
     /** 非可投公告的类型标签（默认被过滤掉，关掉「只看可投」时才看得到）。 */
@@ -793,14 +796,12 @@
             return '<span class="badge gray">截止日期未知</span>';
         }
         const days = item.daysLeft;
-        const estimated = item.deadlineEstimated
-            ? '<span class="badge est">估算</span>' : '';
         if (item.expired || days < 0) {
-            return '<span class="badge gray">已截止</span>' + estimated;
+            return '<span class="badge gray">已截止</span>';
         }
         const text = days === 0 ? '今天截止' : '剩 ' + days + ' 天';
         const cls = days <= 3 ? 'danger' : (days <= 7 ? 'warn' : 'ok');
-        return '<span class="badge ' + cls + '">' + text + '</span>' + estimated;
+        return '<span class="badge ' + cls + '">' + text + '</span>';
     }
 
     /* ---------------- 列表 ---------------- */
@@ -989,8 +990,7 @@
         }
 
         const badges = [deadlineBadge({ daysLeft: daysLeftOf(item.deadlineDate),
-            deadlineDate: item.deadlineDate, expired: isExpired(item.deadlineDate),
-            deadlineEstimated: item.deadlineEstimated })];
+            deadlineDate: item.deadlineDate, expired: isExpired(item.deadlineDate) })];
         if (item.isNew) badges.push('<span class="badge new">新</span>');
         if (item.removed) badges.push('<span class="badge danger">已下架</span>');
 
@@ -1004,7 +1004,6 @@
                 (item.category ? ' · ' + escapeHtml(item.category) : '') + '</div>' +
             '<div class="detail-kv">发布：' + escapeHtml(formatDate(item.publishDate)) + '</div>' +
             '<div class="detail-kv">截止：' + escapeHtml(formatDate(item.deadlineDate)) +
-                (item.deadlineEstimated ? '（估算值，以原文为准）' : '') +
                 (item.deadlineSource ? ' · ' + escapeHtml(item.deadlineSource) : '') + '</div>' +
             (item.budgetLabel
                 ? '<div class="detail-kv">预算金额：' + escapeHtml(item.budgetLabel) + '</div>'

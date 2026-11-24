@@ -13,8 +13,9 @@ import java.util.regex.Pattern;
 /**
  * 从公告正文里解析「报名 / 投标截止时间」「开标时间」。
  *
- * <p>绝大多数站点不提供截止日期字段，只能从正文里抠，抠不到就按「发布日期 + N 天」估算 ——
- * 手机上「这条还能不能投」完全依赖它。
+ * <p>绝大多数站点不提供截止日期字段，只能从正文里抠。抠不到就是<b>未知</b>，
+ * 不再按「发布日期 + N 天」估算 —— 估出来的日期和真实报名截止毫无关系，
+ * 反而会让用户以为「还剩 45 天」，而公告其实早就截止了（实测踩过）。
  *
  * <p>解析优先级：投标/响应截止 &gt; 开标时间 &gt; 获取文件截止。
  * 同一次匹配取"窗口内最后一个日期"，以正确处理「报名时间：9月10日至9月17日」这种区间写法。
@@ -25,7 +26,10 @@ public class DeadlineExtractor {
     private static final List<Pattern> MARKERS = Arrays.asList(
             Pattern.compile("(?:投标|响应|报价|竞标|申请|递交|提交|上传|接收)"
                     + "[^。；;\\n]{0,14}?(?:截止|结束)(?:时间|日期|时限)?"),
-            Pattern.compile("(?:开标|磋商|谈判|评审|竞价)(?:时间|日期|起始时间)"),
+            // 「报名方式：将…盖公章在<日期>前发送…」——日期在标记之后，
+            // 且这往往才是真正"还能不能报名"的截止点（交控集采平台全是这种写法）
+            Pattern.compile("(?:报名|参选)[^。；;\\n]{0,8}?(?:截止|结束|方式)"),
+            Pattern.compile("(?:开标|磋商|谈判|评审|竞价|比选)(?:时间|日期|起始时间)"),
             Pattern.compile("(?:获取|领取|下载|购买)[^。；;\\n]{0,14}?(?:截止|结束)(?:时间|日期)?"),
             Pattern.compile("(?:报名|获取|领取|下载|公示)[^。；;\\n]{0,12}?(?:时间|期限|日期)"
                     + "[^。；;\\n]{0,20}?至"));
@@ -59,25 +63,19 @@ public class DeadlineExtractor {
     /** 解析结果。 */
     public static class Deadline {
         private final LocalDateTime date;
-        private final boolean estimated;
         private final String source;
 
-        public Deadline(LocalDateTime date, boolean estimated, String source) {
+        public Deadline(LocalDateTime date, String source) {
             this.date = date;
-            this.estimated = estimated;
             this.source = source;
         }
 
         public static Deadline none() {
-            return new Deadline(null, false, "");
+            return new Deadline(null, "");
         }
 
         public LocalDateTime date() {
             return date;
-        }
-
-        public boolean estimated() {
-            return estimated;
         }
 
         public String source() {
@@ -85,34 +83,20 @@ public class DeadlineExtractor {
         }
     }
 
-    public Deadline resolve(String content, LocalDateTime publishDate) {
-        return resolve(content, publishDate, true);
-    }
-
     /**
-     * 解析截止时间。
-     *
-     * @param allowEstimate 是否允许"发布日期 + N 天"的兜底估算。
-     *        对成交 / 中标 / 合同这类<b>结果类公告</b>必须传 {@code false}：
-     *        它们本来就没有报名截止时间，估出来的只是一个<b>未来的假截止日</b>，
-     *        会让"已定标"的项目顶着「还剩 N 天」混进未截止列表。
-     *        正文里真写了日期的仍然照常解析。
+     * 解析截止时间。正文里没有明确日期时返回 {@link Deadline#none()}，
+     * <b>不做任何估算</b>。
      */
-    public Deadline resolve(String content, LocalDateTime publishDate, boolean allowEstimate) {
-        int fallbackDays = settings.deadline.defaultDays;
+    public Deadline resolve(String content, LocalDateTime publishDate) {
         int maxDays = settings.deadline.maxDays;
 
         if (settings.deadline.parseFromContent && content != null && !content.trim().isEmpty()) {
             for (Pattern marker : MARKERS) {
                 LocalDateTime parsed = parseAfter(marker, content, publishDate, maxDays);
                 if (parsed != null) {
-                    return new Deadline(parsed, false, "正文解析");
+                    return new Deadline(parsed, "正文解析");
                 }
             }
-        }
-        if (allowEstimate && publishDate != null && fallbackDays > 0) {
-            return new Deadline(publishDate.plusDays(fallbackDays), true,
-                    "发布日期+" + fallbackDays + "天估算");
         }
         return Deadline.none();
     }

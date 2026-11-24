@@ -438,7 +438,9 @@ public class CrawlEngine {
             existing.noticeType = expectedType;
             changed = true;
         }
-        if (!existing.biddable() && existing.deadlineEstimated) {
+        // 估算功能已停用（v7 迁移会清空存量），这里兜底清掉老库里残留的估算值；
+        // 清空后下面的 deadlineDate == null 分支会按正文重新解析一次。
+        if (existing.deadlineEstimated) {
             existing.deadlineDate = null;
             existing.deadlineEstimated = false;
             existing.deadlineSource = "";
@@ -507,12 +509,12 @@ public class CrawlEngine {
 
     private void applyDeadline(TenderRecord record) {
         String text = record.hasContent() ? record.content : record.summary;
-        // 结果 / 合同 / 终止类公告没有报名截止时间，不能给它们估算 ——
-        // 否则"已定标"的项目会顶着「还剩 N 天」混进未截止列表。
-        boolean allowEstimate = record.biddable();
-        DeadlineExtractor.Deadline deadline = deadlineExtractor.resolve(text, record.publishDate, allowEstimate);
+        // 只认正文里写明的日期；解析不到就是「未知」，不再按发布日期估算 ——
+        // 估出来的日子与真实报名截止无关，会让已截止的公告显示成「还剩 N 天」。
+        DeadlineExtractor.Deadline deadline = deadlineExtractor.resolve(text, record.publishDate);
         record.deadlineDate = deadline.date();
-        record.deadlineEstimated = deadline.estimated();
+        // 字段保留是为了兼容旧库结构，估算功能停用后恒为 false
+        record.deadlineEstimated = false;
         record.deadlineSource = truncate(deadline.source(), 64);
     }
 
@@ -614,11 +616,15 @@ public class CrawlEngine {
         if (WyxmzxCrawlerCode.equals(siteCode)) {
             return settings.sites.wyxmzx.lookbackDays;
         }
+        if (Zh0556CrawlerCode.equals(siteCode)) {
+            return settings.sites.zh0556.lookbackDays;
+        }
         return 0;
     }
 
     private static final String AqggzyCrawlerCode = "aqggzy";
     private static final String WyxmzxCrawlerCode = "wyxmzx";
+    private static final String Zh0556CrawlerCode = "zh0556";
 
     private String resolveScope(boolean titleHit, boolean contentHit) {
         if (titleHit && contentHit) {

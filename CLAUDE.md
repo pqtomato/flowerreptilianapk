@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-安庆地区 **花卉 / 园林绿化招标公告监控**。从三个政府/交易站点定向采集公告，过滤噪声、解析报名截止日期，供"还有哪些能投"使用。
+安庆地区 **花卉 / 园林绿化招标公告监控**。从四个政府/交易站点定向采集公告，过滤噪声、解析报名截止日期，供"还有哪些能投"使用。
 
 **当前维护的产品是安卓 App（`android/`）**：装在手机上、本地 SQLite 存数据、每天后台自采集。上一版 Spring Boot + 网页服务已于 2026-11-24 从仓库删除，代码保留在 git 历史里（最后一个包含它的提交是 `31cdea3`，`git show 31cdea3:pom.xml` 可取回）。
 
@@ -69,28 +69,32 @@ node tools/check-mobile-page.js android/app/src/main/assets/index.html android/a
 
 **前台服务必须显式传类型**：`CrawlWorker` 用 WorkManager 的三参 `ForegroundInfo(id, notification, FOREGROUND_SERVICE_TYPE_DATA_SYNC)`。两参构造内部把类型写死为 0，Android 14 + targetSdk 34 会抛 `InvalidForegroundServiceTypeException` 并杀进程，清单里声明 `dataSync` 也救不回来。
 
-**SQLite 迁移是手写的**：`data/TenderDbHelper`，`DB_VERSION = 6`，`onUpgrade` 逐版本升级。加字段时**同时用已入库数据回填**（历史迁移都是拿库里的正文重算），不要要求用户重新采集。改 `versionCode`/`versionName` 每次打包递增，应用设置页会显示。
+**SQLite 迁移是手写的**：`data/TenderDbHelper`，`DB_VERSION = 7`，`onUpgrade` 逐版本升级。加字段时**同时用已入库数据回填**（历史迁移都是拿库里的正文重算），不要要求用户重新采集。改 `versionCode`/`versionName` 每次打包递增，应用设置页会显示。
 
 **时区固定 `Asia/Shanghai`**：截止日期与"是否过期"都依赖 `crawler.timezone`，容器/设备默认 UTC 会让过期判断偏 8 小时。
 
 ## 领域规则（容易写错的地方）
 
-- **截止日期**：优先从正文解析，解析不到按「发布日 + 60 天」估算并标 `deadline_estimated`。时间分隔符要收全 `[:：时点]`，分钟可选必须写 `(?:\d{1,2})?`——写成 `\d{1,2}?` 是懒惰匹配，会把 `09:30` 截成 `09:3`。
-- **公告类型** `common/NoticeType`：`bid` / `award` / `contract` / `aborted`。非 `bid` 不做截止日估算（否则已定标的项目会顶着假截止日排到最前面），列表默认只显示 `bid`，但认不出类型的一律当可投。
+- **截止日期**：只认正文里写明的日期，解析不到就是「未知」，**不做任何估算**（「发布日 + N 天」估出来的日子与真实报名截止无关，实测会让早已截止的公告显示「还剩 45 天」）。`deadline_estimated` 字段/列仅兼容旧库与导出，恒为 0。时间分隔符要收全 `[:：时点]`，分钟可选必须写 `(?:\d{1,2})?`——写成 `\d{1,2}?` 是懒惰匹配，会把 `09:30` 截成 `09:3`。
+- **公告类型** `common/NoticeType`：`bid` / `award` / `contract` / `aborted`。结果类公告没有报名截止时间，本来就不该有截止日；列表默认只显示 `bid`，但认不出类型的一律当可投。
 - **排除词只判定标题**，且**先判标题排除词再做关键词匹配**。这是系统能用的关键：`养护`/`绿化`/`园林` 太宽泛，不排除会捞进车辆维修、厕所管护、公路养护、资产拍卖。
 - **预算金额只认「预算金额」**。`最高限价` 可能是单价（`3.4元/平方米/年`）或比例（`审定金额的95%`），只展示原文、不参与排序；`预算金额：/` 视为无金额，不能当 0。
 - **命中 = 新增 + 重复**。重复项在关键词判定前就被 `findByUrlHash` 挡掉了，所以也要计一次命中，否则日志出现「命中 0 · 重复 7」。
 - **检索词上限是均匀取样**，不是取前 N 个。词表按「窄 → 宽」排列，取前 N 等于只挑最窄的词（实测候选 0）。
 
-## 三个站点的坑
+## 四个站点的坑
 
 | 站点 | 抓取方式 | 关键约束 |
 | --- | --- | --- |
 | aqggzy | epoint 检索接口 | `wd` 不能为空（所以是**关键词驱动**）；`categorynum` 以 `002` 开头是新闻，丢弃；县级转载公告本站无落地页，链接改用 `/tiaozhuan.html` 并标「跳转链接」 |
 | cgj | 静态 HTML 列表 `ul.doc_list li` | 翻页 `?pageIndex=N`，**页码从 1 开始** |
 | wyxmzx | epoint 检索接口 `cnum=080` | 搜索请求**不能带 `Referer`**（400/CSRF），也**不能带 `Origin`**（503）；证书已过期，靠 `insecureTlsHosts` 按域名放宽 |
+| zh0556 | 静态列表页，按「类目×类型」翻页（无检索接口） | 列表项必须在 `div.projectlist ul li` 里选（导航也是 `li`）；日期带方括号；`[报名已结束]` 不是截止时间；详情页 `<title>` 是站点名，**标题只能取列表 `<a>` 文本**；默认跳过拍卖拍租 |
 
 默认 `lookbackDays=30` 时间窗；不加窗会返回大量早已过期的老公告。首次建库用 0。
+
+注意 zh0556 **没有「花卉」标**：站内搜索「花卉 / 草花 / 月季」均为 0 条，
+能命中的是「苗木 / 绿化 / 园林 / 绿植」。它补的是苗木绿化线，不要按「能搜到花卉」去承诺。
 
 ## 工程约定
 

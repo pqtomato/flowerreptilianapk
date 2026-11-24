@@ -317,6 +317,9 @@ public class LocalApiServer extends NanoHTTPD {
         if ("cgj".equals(code)) {
             return holder.settings.sites.cgj.name;
         }
+        if ("zh0556".equals(code)) {
+            return holder.settings.sites.zh0556.name;
+        }
         return holder.settings.sites.wyxmzx.name;
     }
 

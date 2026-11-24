@@ -25,7 +25,12 @@ public class TenderRecord {
     public LocalDateTime publishDate;
     /** 报名 / 投标截止日期 —— 手机端"还能不能投"的依据 */
     public LocalDateTime deadlineDate;
-    /** 截止日期是否为估算值 */
+    /**
+     * 截止日期是否为估算值。
+     *
+     * <p>已停用：估算只认正文里写明的日期，新数据恒为 {@code false}；
+     * 字段保留是为了兼容旧库结构与导出格式。
+     */
     public boolean deadlineEstimated;
     public String deadlineSource;
     public String matchedKeywords;

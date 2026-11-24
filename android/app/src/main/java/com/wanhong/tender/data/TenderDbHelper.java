@@ -12,7 +12,9 @@ import com.wanhong.crawler.crawler.BudgetExtractor;
 import com.wanhong.crawler.crawler.DeadlineExtractor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,8 +32,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
      * v4：新增 budget_yuan / budget_cap_text / project_code（预算金额、最高限价原文、项目编号）
      * v5：订正数据 —— 重新解析金额相关字段（v4 的「最高限价」会吞掉后面紧邻的字段）
      * v6：订正数据 —— 重新解析截止时间（修正前「15点00分」的时分会被丢掉）
+     * v7：停用截止日估算，清理存量估算值（能解析出正文日期的改回正文解析）
      */
-    public static final int DB_VERSION = 6;
+    public static final int DB_VERSION = 7;
 
     public static final String TABLE_TENDER = "tender";
     public static final String TABLE_KEYWORD = "crawler_keyword";
@@ -144,6 +147,9 @@ public class TenderDbHelper extends SQLiteOpenHelper {
         if (oldVersion < 6) {
             reparseParsedDeadlines(db);
         }
+        if (oldVersion < 7) {
+            reparseEstimatedDeadlines(db);
+        }
     }
 
     /** {@code DeadlineExtractor} 解析成功时写进 deadline_source 的值。 */
@@ -155,7 +161,7 @@ public class TenderDbHelper extends SQLiteOpenHelper {
      * <p>修正前 {@code 15点00分} 这类写法里的时分会被整段丢掉、只剩 00:00 ——
      * 于是截止当天上午就被判成"已截止"，而实际还能投到下午三点。
      *
-     * <p>只重解析 source 为「正文解析」的：估算出来的日期不受这次修正影响。
+     * <p>只重解析 source 为「正文解析」的；估算值由 v7 的迁移统一处理。
      * <b>保守更新</b>：只有重新解析成功才覆盖，解析不出来就保留原值，
      * 免得"订正"反而把某些记录的截止时间弄丢。
      */
@@ -171,8 +177,7 @@ public class TenderDbHelper extends SQLiteOpenHelper {
                 String summary = cursor.getString(2);
                 LocalDateTime publishDate = parseIso(cursor.getString(3));
                 String text = (content != null && !content.trim().isEmpty()) ? content : summary;
-                // allowEstimate=false：原文里本来就有日期，重解析不该把它变成"估算值"
-                DeadlineExtractor.Deadline deadline = extractor.resolve(text, publishDate, false);
+                DeadlineExtractor.Deadline deadline = extractor.resolve(text, publishDate);
                 if (deadline.date() != null) {
                     reparsed.put(id, deadline.date());
                 }
@@ -184,6 +189,54 @@ public class TenderDbHelper extends SQLiteOpenHelper {
             ContentValues values = new ContentValues();
             values.put("deadline_date", entry.getValue().toString());
             db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(entry.getKey())});
+        }
+    }
+
+    /**
+     * v6 → v7 数据订正：停用「发布日期 + N 天」估算，清理存量估算值。
+     *
+     * <p>估出来的日期和真实报名截止毫无关系（实测：公告 11-05 就截止了，
+     * 估算值还显示「剩 45 天」），继续留在库里只会误导用户。
+     *
+     * <p>先按新解析器把老数据的正文重跑一遍：正文里真写了日期的改回「正文解析」；
+     * 仍解析不出来的一律清空，界面上显示「截止日期未知」，不再保留编出来的日子。
+     */
+    private void reparseEstimatedDeadlines(SQLiteDatabase db) {
+        DeadlineExtractor extractor = new DeadlineExtractor(new CrawlerSettings());
+        Map<Long, LocalDateTime> reparsed = new HashMap<>();
+        List<Long> cleared = new ArrayList<>();
+        Cursor cursor = db.rawQuery("SELECT id, content, summary, publish_date FROM " + TABLE_TENDER
+                + " WHERE deadline_estimated=1", null);
+        try {
+            while (cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                String content = cursor.getString(1);
+                String summary = cursor.getString(2);
+                LocalDateTime publishDate = parseIso(cursor.getString(3));
+                String text = (content != null && !content.trim().isEmpty()) ? content : summary;
+                DeadlineExtractor.Deadline deadline = extractor.resolve(text, publishDate);
+                if (deadline.date() != null) {
+                    reparsed.put(id, deadline.date());
+                } else {
+                    cleared.add(id);
+                }
+            }
+        } finally {
+            cursor.close();
+        }
+        for (Map.Entry<Long, LocalDateTime> entry : reparsed.entrySet()) {
+            ContentValues values = new ContentValues();
+            values.put("deadline_date", entry.getValue().toString());
+            values.put("deadline_estimated", 0);
+            values.put("deadline_source", DEADLINE_SOURCE_PARSED);
+            db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(entry.getKey())});
+        }
+        for (Long id : cleared) {
+            ContentValues values = new ContentValues();
+            values.putNull("deadline_date");
+            values.put("deadline_estimated", 0);
+            values.put("deadline_source", "");
+            db.update(TABLE_TENDER, values, "id=?", new String[]{String.valueOf(id)});
         }
     }
 

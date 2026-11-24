@@ -1,6 +1,7 @@
 package com.wanhong.crawler.pipeline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wanhong.crawler.common.NoticeType;
 import com.wanhong.crawler.config.CrawlerSettings;
 import com.wanhong.crawler.crawler.AqggzyCrawler;
 import com.wanhong.crawler.crawler.CgjCrawler;
@@ -8,6 +9,7 @@ import com.wanhong.crawler.crawler.DeadlineExtractor;
 import com.wanhong.crawler.crawler.DetailParser;
 import com.wanhong.crawler.crawler.SiteCrawler;
 import com.wanhong.crawler.crawler.WyxmzxCrawler;
+import com.wanhong.crawler.crawler.Zh0556Crawler;
 import com.wanhong.crawler.crawler.epoint.EpointSearchClient;
 import com.wanhong.crawler.filter.KeywordOverrideSource;
 import com.wanhong.crawler.filter.KeywordRules;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -37,14 +40,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LiveCrawlIT {
 
     @Test
-    @DisplayName("真实站点联调：三个站点都能采到数据，且过滤/截止日期逻辑生效")
+    @DisplayName("真实站点联调：四个站点都能采到数据，且过滤/截止日期逻辑生效")
     void crawlsRealSites() {
         CrawlerSettings settings = new CrawlerSettings();
         settings.request.minIntervalMillis = 700;
-        settings.request.maxDetailPerRun = 20;
+        // 详情配额要够覆盖本次命中的全部条目，否则后入库的记录会没有正文
+        settings.request.maxDetailPerRun = 80;
         settings.sites.aqggzy.maxPagesPerKeyword = 1;
         settings.sites.wyxmzx.maxPagesPerKeyword = 1;
         settings.sites.cgj.maxPages = 1;
+        settings.sites.zh0556.maxPagesPerCategory = 1;
         settings.verify.enabled = false;
         // 只跑少量关键词，够证明链路通即可
         settings.sites.aqggzy.lookbackDays = 30;
@@ -64,6 +69,7 @@ class LiveCrawlIT {
         crawlers.add(new AqggzyCrawler(settings, searchClient));
         crawlers.add(new CgjCrawler(settings, fetcher, null));
         crawlers.add(new WyxmzxCrawler(settings, searchClient));
+        crawlers.add(new Zh0556Crawler(settings, fetcher, null));
 
         CrawlEngine engine = new CrawlEngine(settings, crawlers, rules, repository, fetcher,
                 detailParser, deadlineExtractor, verifier, new ObjectMapper(), null);
@@ -92,8 +98,7 @@ class LiveCrawlIT {
         }
         for (TenderRecord record : repository.all()) {
             report.append("    * [").append(record.siteCode).append("] ").append(record.title)
-                    .append("\n      截止 ").append(record.deadlineDate)
-                    .append(record.deadlineEstimated ? "(估算)" : "(正文解析)")
+                    .append("\n      截止 ").append(record.deadlineDate == null ? "未知" : record.deadlineDate)
                     .append(" | 区县 ").append(record.region)
                     .append(" | 分类 ").append(record.category)
                     .append(" | 命中 ").append(record.matchedKeywords)
@@ -107,10 +112,26 @@ class LiveCrawlIT {
         assertTrue(summary.savedCount > 0, "真实站点应该能采到数据");
         assertEquals(0, summary.failedCount, "不应该有处理失败");
 
+        int withContent = 0;
+        int withoutDeadline = 0;
         for (TenderRecord record : repository.all()) {
-            assertTrue(record.hasContent(), "入库记录应该有正文：" + record.title);
-            assertTrue(record.deadlineDate != null, "入库记录应该有截止日期：" + record.title);
+            if (record.hasContent()) {
+                withContent++;
+            }
+            // 详情抓取成功的记录必须有正文（配额用完的记录会是 UNKNOWN，属预期）
+            if ("OK".equals(record.linkStatus)) {
+                assertTrue(record.hasContent(), "详情页抓取成功的记录应该有正文：" + record.title);
+            }
+            // 估算已停用：截止日期要么来自正文解析，要么就是未知，不能出现估算值
+            assertFalse(record.deadlineEstimated,
+                    "不应再出现估算的截止日期：" + record.title);
+            if (NoticeType.isBiddable(record.noticeType) && record.deadlineDate == null) {
+                // 正文里确实可能没写截止时间，只统计不判失败
+                withoutDeadline++;
+            }
         }
+        assertTrue(withContent > 0, "至少应该有记录抓到正文");
+        System.out.println("正文未写明截止日期的可投公告：" + withoutDeadline + " 条（预期，不再估算）");
     }
 
     /** 结果同时落盘，便于在 CI/终端里直接查看（Gradle 默认不显示测试的 stdout） */

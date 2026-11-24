@@ -72,11 +72,9 @@ public class CrawlerSettings {
         public int maxContentLength = 30000;
     }
 
-    /** 截止日期解析与估算 */
+    /** 截止日期解析（只认正文里写明的日期，不做估算） */
     public static class Deadline {
         public boolean parseFromContent = true;
-        /** 解析不到时按 发布日期 + N 天 估算 */
-        public int defaultDays = 60;
         /** 偏离发布日期超过 N 天视为误判 */
         public int maxDays = 400;
     }
@@ -94,6 +92,7 @@ public class CrawlerSettings {
         public Aqggzy aqggzy = new Aqggzy();
         public Cgj cgj = new Cgj();
         public Wyxmzx wyxmzx = new Wyxmzx();
+        public Zh0556 zh0556 = new Zh0556();
     }
 
     public static class Aqggzy {
@@ -133,5 +132,26 @@ public class CrawlerSettings {
         public int contentLength = 3000;
         public int lookbackDays = 30;
         public List<String> excludedCategoryPrefixes = new ArrayList<>();
+    }
+
+    /**
+     * 安庆交控集团集采平台（jc.zh0556.com）。
+     *
+     * <p>站点没有检索接口，只能按「类目 × 项目类型」翻静态列表页。
+     * 默认跳过 5/6 类（办公用品、拍卖拍租）——拍卖招租正是排除词重点拦截的噪声。
+     */
+    public static class Zh0556 {
+        public boolean enabled = true;
+        public String name = "安庆交控集团集采平台";
+        public String baseUrl = "https://jc.zh0556.com";
+        public String listPath = "/list/search";
+        /** 1=招标采购 2=非招采购 */
+        public List<Integer> categoryIds = new ArrayList<>(Arrays.asList(1, 2));
+        /** 1=建设工程 2=设备材料 3=咨询服务 4=小额库（5/6 未确认，默认不抓） */
+        public List<Integer> typeIds = new ArrayList<>(Arrays.asList(1, 2, 3, 4));
+        /** 每个「类目×类型」最多翻多少页 */
+        public int maxPagesPerCategory = 3;
+        /** 只采集最近 N 天；0 = 不限 */
+        public int lookbackDays = 30;
     }
 }

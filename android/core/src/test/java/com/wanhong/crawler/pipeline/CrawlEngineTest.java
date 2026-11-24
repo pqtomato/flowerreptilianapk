@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 整条采集链路的离线端到端测试。
  *
  * <p>用假的站点采集器 + 假的 HTTP 传输 + 内存存储，验证：
- * 关键词过滤（含排除词）、截止日期解析与估算、区县、去重、增量、正文命中、
+ * 关键词过滤（含排除词）、截止日期解析（不做估算）、区县、去重、增量、正文命中、
  * 计数与 CSV 导出。不依赖网络，也不依赖数据库。
  */
 class CrawlEngineTest {
@@ -244,8 +244,8 @@ class CrawlEngineTest {
     }
 
     @Test
-    @DisplayName("没有正文可解析时按发布日期 + 60 天估算截止日期")
-    void estimatesDeadlineWhenNoContent() {
+    @DisplayName("没有正文可解析时不估算截止日期，保持未知")
+    void doesNotEstimateDeadlineWhenNoContent() {
         FakeCrawler crawler = new FakeCrawler();
         crawler.add(item("苗木采购公告", "https://example.com/f.html", PUBLISH));
         transport.defaultStatus(404);
@@ -254,9 +254,9 @@ class CrawlEngineTest {
         engine.crawl("all", null, null, "MANUAL", null);
 
         TenderRecord record = repository.all().get(0);
-        assertNotNull(record.deadlineDate);
-        assertTrue(record.deadlineEstimated);
-        assertEquals(PUBLISH.plusDays(60), record.deadlineDate);
+        assertNull(record.deadlineDate);
+        assertFalse(record.deadlineEstimated);
+        assertEquals("", record.deadlineSource);
     }
 
     @Test
@@ -317,8 +317,8 @@ class CrawlEngineTest {
     }
 
     @Test
-    @DisplayName("重复采集同一条时会补上缺失的截止日期")
-    void backfillsDeadlineOnDuplicate() {
+    @DisplayName("重复采集时从补到的正文里解析截止日期（不估算）")
+    void backfillsDeadlineFromDetailOnDuplicate() {
         FakeCrawler crawler = new FakeCrawler();
         crawler.add(item("花卉采购项目招标公告", "https://example.com/i.html", PUBLISH));
         transport.defaultStatus(404);
@@ -326,15 +326,20 @@ class CrawlEngineTest {
         engine.crawl("all", null, null, "MANUAL", null);
 
         TenderRecord record = repository.all().get(0);
-        record.deadlineDate = null;
-        record.deadlineEstimated = false;
-        repository.update(record);
+        assertNull(record.deadlineDate, "没抓到正文时截止日期应保持未知");
+        assertFalse(record.deadlineEstimated);
 
+        // 第二次采集能打开详情页了，应当从正文里解析出真实截止时间
+        transport.routeOk("https://example.com/i.html",
+                "<html><head><title>花卉采购项目招标公告</title></head><body>"
+                        + "<div class=\"notice-content\">" + LONG_BODY + "</div>"
+                        + "<input type=\"hidden\" id=\"infodate\" value=\"2026-09-10\" /></body></html>");
         engine.crawl("all", null, null, "MANUAL", null);
 
         TenderRecord refreshed = repository.all().get(0);
-        assertNotNull(refreshed.deadlineDate, "重复记录应补上截止日期");
-        assertTrue(refreshed.deadlineEstimated);
+        assertEquals(LocalDateTime.of(2026, 9, 25, 9, 30), refreshed.deadlineDate);
+        assertFalse(refreshed.deadlineEstimated);
+        assertEquals("正文解析", refreshed.deadlineSource);
     }
 
     // ------------------------------------------------- maxKeywords 的选词口径

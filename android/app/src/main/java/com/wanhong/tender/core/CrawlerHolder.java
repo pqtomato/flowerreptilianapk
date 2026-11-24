@@ -12,6 +12,7 @@ import com.wanhong.crawler.crawler.DeadlineExtractor;
 import com.wanhong.crawler.crawler.DetailParser;
 import com.wanhong.crawler.crawler.SiteCrawler;
 import com.wanhong.crawler.crawler.WyxmzxCrawler;
+import com.wanhong.crawler.crawler.Zh0556Crawler;
 import com.wanhong.crawler.crawler.epoint.EpointSearchClient;
 import com.wanhong.crawler.filter.KeywordRules;
 import com.wanhong.crawler.http.HttpFetcher;
@@ -106,6 +107,7 @@ public final class CrawlerHolder {
         crawlers.add(new AqggzyCrawler(settings, searchClient));
         crawlers.add(new CgjCrawler(settings, fetcher, message -> Log.w(TAG, message)));
         crawlers.add(new WyxmzxCrawler(settings, searchClient));
+        crawlers.add(new Zh0556Crawler(settings, fetcher, message -> Log.w(TAG, message)));
 
         this.engine = new CrawlEngine(settings, crawlers, keywordRules, repository, fetcher,
                 detailParser, deadlineExtractor, linkVerifier, com.wanhong.crawler.pipeline.Json.mapper(),
@@ -139,6 +141,7 @@ public final class CrawlerHolder {
     private void applyPrefs() {
         settings.sites.aqggzy.lookbackDays = prefs.getInt("lookbackDays", 30);
         settings.sites.wyxmzx.lookbackDays = prefs.getInt("lookbackDays", 30);
+        settings.sites.zh0556.lookbackDays = prefs.getInt("lookbackDays", 30);
         settings.detail.enabled = prefs.getBoolean("fetchDetail", true);
         settings.verify.enabled = prefs.getBoolean("verifyLink", true);
         settings.request.maxDetailPerRun = prefs.getInt("maxDetailPerRun", 300);
@@ -164,6 +167,7 @@ public final class CrawlerHolder {
         prefs.edit().putInt("lookbackDays", days).apply();
         settings.sites.aqggzy.lookbackDays = days;
         settings.sites.wyxmzx.lookbackDays = days;
+        settings.sites.zh0556.lookbackDays = days;
     }
 
     public boolean isScheduleEnabled() {
@@ -308,7 +312,8 @@ public final class CrawlerHolder {
     }
 
     public List<String> siteCodes() {
-        return Arrays.asList(AqggzyCrawler.SITE_CODE, CgjCrawler.SITE_CODE, WyxmzxCrawler.SITE_CODE);
+        return Arrays.asList(AqggzyCrawler.SITE_CODE, CgjCrawler.SITE_CODE,
+                WyxmzxCrawler.SITE_CODE, Zh0556Crawler.SITE_CODE);
     }
 }
 
