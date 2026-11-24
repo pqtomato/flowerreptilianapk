@@ -8,12 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **当前维护的产品是安卓 App（`android/`）**：装在手机上、本地 SQLite 存数据、每天后台自采集。上一版 Spring Boot + 网页服务已于 2026-11-24 从仓库删除，代码保留在 git 历史里（最后一个包含它的提交是 `31cdea3`，`git show 31cdea3:pom.xml` 可取回）。
 
+**并行分支上的 `flutter_app/` 是 Flutter 原生版**（分支 `flutter`）：采集内核用 Dart 重写，
+界面是 Material 3 原生页面（不再是 WebView）。两版共用词表、站点规则与数据库结构；
+改站点解析时两边都要同步。安卓原生版仍是主线。
+
 ## 仓库布局
 
 | 路径 | 说明 |
 | --- | --- |
 | `android/core/` | 纯 Java 采集内核（Gradle `java-library`，无安卓依赖），可在电脑上跑单测和真实站点联调 |
 | `android/app/` | 安卓壳：WebView + 应用内本地 HTTP + WorkManager + SQLite |
+| `flutter_app/` | Flutter 跨平台版：Dart 内核（`lib/core`）+ sqflite 数据层 + Material 3 界面 + WorkManager |
 | `tools/verify.ps1` | 一键自检（页面静态检查 → 内核单测 → release 打包） |
 | `tools/check-mobile-page.js` | 页面静态自检（JS 语法、元素 id、调用的接口、手机适配项） |
 | `tools/dsh-*.mjs` | AI 会话历史迁移/恢复工具，与产品无关 |
@@ -43,6 +48,24 @@ node tools/check-mobile-page.js android/app/src/main/assets/index.html android/a
 ```
 
 `LiveCrawlIT` 的报告写在 `android/core/build/live-crawl-report.txt`。
+
+Flutter 版（`flutter_app/`）：
+
+```powershell
+# 本机需要：PATH 含 D:\flutter\bin，ANDROID_HOME=D:\Android\Sdk，
+# PUB_HOSTED_URL=https://pub.flutter-io.cn，FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+cd flutter_app
+flutter pub get
+flutter test                                              # 离线单测
+flutter test test/live --dart-define=LIVE=true            # 联网打真实 zh0556，约 30 秒
+flutter build apk --release                               # -> build/app/outputs/flutter-apk/
+```
+
+- `flutter_local_notifications 23` 要求 **compileSdk 37**（平台包 `platforms;android-37.0`），
+  已在 `android/app/build.gradle.kts` 显式抬高，不要退回 `flutter.compileSdkVersion`。
+- Windows 上 Kotlin 增量缓存偶发关不掉，`android/gradle.properties` 里
+  `kotlin.incremental=false` 是为了构建稳定，不要随便打开。
+- Gradle 发行包走华为云镜像并带 sha256（`android/gradle/wrapper/gradle-wrapper.properties`）。
 
 `tools/verify.ps1`、`tools/emulator-log-monitor.ps1` **必须保存为 UTF-8 带 BOM**：Windows PowerShell 5.1 会把无 BOM 的 `.ps1` 按 GBK 解码，中文注释会撑坏语法。
 
@@ -88,7 +111,7 @@ node tools/check-mobile-page.js android/app/src/main/assets/index.html android/a
 | --- | --- | --- |
 | aqggzy | epoint 检索接口 | `wd` 不能为空（所以是**关键词驱动**）；`categorynum` 以 `002` 开头是新闻，丢弃；县级转载公告本站无落地页，链接改用 `/tiaozhuan.html` 并标「跳转链接」 |
 | cgj | 静态 HTML 列表 `ul.doc_list li` | 翻页 `?pageIndex=N`，**页码从 1 开始** |
-| wyxmzx | epoint 检索接口 `cnum=080` | 搜索请求**不能带 `Referer`**（400/CSRF），也**不能带 `Origin`**（503）；证书已过期，靠 `insecureTlsHosts` 按域名放宽 |
+| wyxmzx | epoint 检索接口（**已退化成列表**） | 搜索请求**不能带 `Referer`**（400/CSRF），也**不能带 `Origin`**（503）；自 2026-11-24 起 https 的检索接口与详情页都返回 404，`baseUrl` 必须用 `http://www.wyxmzx.com`；接口**忽略 `wd`/`cnum`/`time`**、`fields` 必须为空串，实际只按 `webdate` 倒序返回全部公告，所以采集改成翻页（`maxPages`）、时间窗在本地过滤、关键词交给引擎 |
 | zh0556 | 静态列表页，按「类目×类型」翻页（无检索接口） | 列表项必须在 `div.projectlist ul li` 里选（导航也是 `li`）；日期带方括号；`[报名已结束]` 不是截止时间；详情页 `<title>` 是站点名，**标题只能取列表 `<a>` 文本**；默认跳过拍卖拍租 |
 
 默认 `lookbackDays=30` 时间窗；不加窗会返回大量早已过期的老公告。首次建库用 0。

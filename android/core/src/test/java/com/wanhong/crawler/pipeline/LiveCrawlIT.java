@@ -47,7 +47,7 @@ class LiveCrawlIT {
         // 详情配额要够覆盖本次命中的全部条目，否则后入库的记录会没有正文
         settings.request.maxDetailPerRun = 80;
         settings.sites.aqggzy.maxPagesPerKeyword = 1;
-        settings.sites.wyxmzx.maxPagesPerKeyword = 1;
+        settings.sites.wyxmzx.maxPages = 1;
         settings.sites.cgj.maxPages = 1;
         settings.sites.zh0556.maxPagesPerCategory = 1;
         settings.verify.enabled = false;

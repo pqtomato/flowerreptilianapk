@@ -122,13 +122,19 @@ public class CrawlerSettings {
     public static class Wyxmzx {
         public boolean enabled = true;
         public String name = "安庆市阳光采购交易服务平台";
-        public String baseUrl = "https://www.wyxmzx.com";
+        // 2026-11-24 实测：站点的 https vhost 只剩首页，检索接口与详情页都返回 404；
+        // 同一路径换成 http 全部正常。不要再改回 https。
+        public String baseUrl = "http://www.wyxmzx.com";
         public String searchPath = "/inteligentsearch/rest/esinteligentsearch/getFullTextDataNew";
         /** 重要：该站 WAF 只要请求带 Referer 就判定跨站请求伪造，必须留空 */
         public String referer = "";
-        public String cnum = "080";
+        /**
+         * 2026-11-24 实测：检索接口会忽略 wd / cnum / time，只按 webdate 倒序返回全部公告。
+         * cnum=080 会直接返回空结构，所以传空串，采集按「翻页列表」处理。
+         */
+        public String cnum = "";
         public int pageSize = 30;
-        public int maxPagesPerKeyword = 2;
+        public int maxPages = 40;
         public int contentLength = 3000;
         public int lookbackDays = 30;
         public List<String> excludedCategoryPrefixes = new ArrayList<>();
