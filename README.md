@@ -21,22 +21,21 @@
 | 目录 | 说明 |
 | --- | --- |
 | `android/` | **当前维护的产品**：安卓 App + 共用采集内核（`android/core`，纯 Java，可在电脑上跑单测与真实站点联调） |
-| `src/` + `pom.xml` | 上一版 **Spring Boot + 网页** 服务，**已停用**，仅作参考保留（其中 `src/main/resources/keywords/*.txt` 的词表已复制到 `android/core`，后续以安卓侧为准） |
 | `参考资料借鉴说明.md` | 对照前一代 Python 系统，说明哪些运营经验被采纳、哪些被刻意放弃 |
 | `tools/check-mobile-page.js` | 页面静态自检脚本（JS 语法、元素 id、手机端适配项） |
 | `tools/dsh-history-import.mjs` | 换机器时把 DSH 会话历史迁移包合并进本机 `~/.dsh`（幂等，含校验与备份） |
 | `tools/dsh-verify-with-dsh-reader.mjs` | 用 DSH 自己的存储后端复读会话日志，证明"导入的历史真能读出来" |
 | `tools/dsh-recover-files-from-session.mjs` | **从会话日志恢复文件**（重放 write/edit）；还能用 `--check-missing` 对照磁盘找出被漏掉的文件 |
 
-> 停用的 Spring Boot 版仍然可以 `mvn clean package` 构建运行，但它<b>不再接收功能更新</b>；
-> 所有新功能都在安卓侧。若确认不再需要，可以删除根目录的 `pom.xml` 与 `src/`。
+> 上一版 Spring Boot + 网页服务已于 2026-11-24 从仓库删除，代码仍完整保留在 git 历史里
+> （删除前最后一个含它的提交是 `31cdea3`，用 `git show 31cdea3:pom.xml` 可取回任意文件）。
+> 其词表与页面当时已复制进安卓侧，功能不再更新。
 
 ---
 
-## 抓取策略与踩过的坑（两版共用，仍然适用）
+## 抓取策略与踩过的坑（实测结论，仍然适用）
 
-下面这些结论是两版共用的采集知识，改安卓版逻辑前建议先读一遍；
-新版实现位于 `android/core/src/main/java/com/wanhong/crawler/`。
+改动采集逻辑前建议先读一遍，实现位于 `android/core/src/main/java/com/wanhong/crawler/`。
 
 ### 1. 安庆市公共资源交易服务网 —— 走站内检索接口
 
@@ -100,31 +99,7 @@
 
 ---
 
-## 旧版 Spring Boot 服务（已停用）
-
-以下内容仅对停用的服务版有效，保留作为参考实现（数据库表结构、REST 接口设计等）。
-
-### 快速开始
-
-```bash
-mvn clean package -DskipTests
-java -jar target/flower-tender-crawler.jar     # 默认 H2 文件库，零配置
-# 浏览器打开 http://localhost:8080
-```
-
-命令行一次性采集（采完即退出，适合接入计划任务）：
-
-```bash
-java -jar target/flower-tender-crawler.jar --crawl.once=true --crawl.site=all
-java -jar target/flower-tender-crawler.jar --crawl.once=true --crawl.lookbackDays=0   # 首次建库
-```
-
-参数：`--crawl.site=all|aqggzy|cgj|wyxmzx`、`--crawl.lookbackDays=N`（0=不限）、
-`--crawl.maxKeywords=N`。退出码 0 成功、1 失败。
-
----
-
-## 二、手机端界面（同一套页面，现已搬进 App）
+## 一、手机端界面（同一套页面，现已搬进 App）
 
 页面是**移动优先**写的，电脑上也能用（宽屏自动变两列 + 右侧抽屉详情）。
 
@@ -177,62 +152,48 @@ java -jar target/flower-tender-crawler.jar --crawl.once=true --crawl.lookbackDay
 
 ---
 
-## 三、项目结构（旧版服务）
+## 二、项目结构
 
 ```
-src/main/java/com/wanhong/crawler/
-├── CrawlerApplication.java              启动类（含统一时区设置）
-├── CrawlOnceRunner.java                 命令行一次性采集
-├── config/
-│   ├── CrawlerProperties.java           crawler.* 配置映射
-│   └── HostnameVerificationInitializer.java  证书开关（容器启动前生效）
-├── http/
-│   ├── HttpFetcher.java                 UA 轮换 / 限速 / 重试 / 解压 / cookie 预热 / 证书降级
-│   └── FetchResponse.java, CrawlException.java
-├── crawler/
-│   ├── SiteCrawler.java                 站点采集器接口（只负责"发现公告"）
-│   ├── AqggzyCrawler.java / CgjCrawler.java / WyxmzxCrawler.java
-│   ├── DetailParser.java                详情页解析（三站通用）
-│   ├── DeadlineExtractor.java           报名/投标截止日期解析
-│   ├── epoint/                          epoint 站内检索接口客户端
-│   └── model/                           CrawlItem / CrawlContext / CrawlResult / DetailResult
-├── service/
-│   ├── CrawlService.java                编排：发现 → 过滤 → 详情补全 → 去重入库 → 记日志
-│   ├── KeywordMatcher.java              关键词/排除词匹配与热加载
-│   ├── VerificationService.java         已下架公告校验
-│   ├── TenderQueryService.java          查询 / 统计 / 收藏 / 已读
-│   └── ExportService.java               CSV 导出
-├── repository/                          JPA 仓库与查询条件
-├── entity/                              TenderInfo / CrawlLog
-├── web/                                 REST 接口与统一异常
-└── scheduler/CrawlScheduler.java        定时采集
-
-src/main/resources/
-├── application.yml                      主配置（含各站点参数与坑位说明）
-├── application-mysql.yml                MySQL 环境配置
-├── keywords/flower-keywords.txt         标题关键词（兼作检索词）
-├── keywords/flower-core-keywords.txt    正文关键词（高精度）
-├── keywords/exclude-keywords.txt        排除词（81 个）
-└── static/index.html                    手机端自适应页面
-
-tools/check-mobile-page.js               手机端页面静态自检脚本（见第八节）
+android/
+├── core/   纯 Java 采集内核，不依赖安卓，可在电脑上跑单测与真实站点联调
+│           common / config / http / crawler / filter / pipeline
+└── app/    安卓应用
+            core(CrawlerHolder 组装) / data(SQLite) / net(OkHttp)
+            crawl(WorkManager + 通知) / server(本地 HTTP) / ui(WebView)
+            assets/index.html   页面唯一维护源
+tools/      自检、页面检查、会话迁移脚本
 ```
 
 数据流：**采集器只负责发现公告**（标题、链接、日期、分类、区县），
-关键词过滤、截止日期解析、详情补全、去重、落库由 `CrawlService` 统一处理，
-新增站点只需实现 `SiteCrawler` + 加一段配置。
+关键词过滤、截止日期解析、详情补全、去重、落库由 `CrawlEngine` 统一处理，
+新增站点只需实现 `SiteCrawler` + 在 `CrawlerHolder` 注册 + 在 `CrawlerSettings.Sites` 加配置。
+每个包的职责见 [android/README.md](android/README.md) 第五节。
+采集参数（限速、重试、时间窗、词表路径、各站点参数）的默认值在
+`android/core/src/main/java/com/wanhong/crawler/config/CrawlerSettings.java`；
+定时采集与截止提醒的开关/时间在 App 的「采集 → 应用设置」里改。
+
+### 页面自检
+
+`tools/check-mobile-page.js` 是不依赖浏览器的静态自检脚本：检查内联 JS 语法、
+JS 引用的元素 id 是否存在、页面调用的接口是否都能在 `LocalApiServer` 里找到、
+手机端适配项是否齐全。
+
+```bash
+node tools/check-mobile-page.js android/app/src/main/assets/index.html android/app/src/main/java
+```
 
 ---
 
-## 四、关键词与过滤（旧版服务）
+## 三、关键词与过滤
 
 三套词表 + 手机端可维护的自定义词：
 
 | 来源 | 作用 | 数量 |
 | --- | --- | --- |
-| `keywords/flower-keywords.txt` | 站内检索词 + **标题命中**判定 | 49 |
-| `keywords/flower-core-keywords.txt` | **正文命中**判定（精度高） | 44 |
-| `keywords/exclude-keywords.txt` | **排除词**，命中即丢弃 | 93 |
+| `android/core/src/main/resources/keywords/flower-keywords.txt` | 站内检索词 + **标题命中**判定 | 49 |
+| `android/core/src/main/resources/keywords/flower-core-keywords.txt` | **正文命中**判定（精度高） | 44 |
+| `android/core/src/main/resources/keywords/exclude-keywords.txt` | **排除词**，命中即丢弃 | 93 |
 | 数据库 `crawler_keyword` 表 | 用户在手机上增删的词（ADD / DISABLE 覆盖） | 运行时 |
 
 内置词表放文件里便于版本管理与追溯；用户改动存表，两者合并成"实际生效"的词表。
@@ -251,13 +212,8 @@ tools/check-mobile-page.js               手机端页面静态自检脚本（见
    国家储备林…）：这是前一代系统"把大型市政绿化工程也排除掉"的做法，
    对花木公司可能合理，但属于业务口径，默认不启用。
 
-**用外部词表文件（免重新打包）**：
-
-```bash
-java -jar target/flower-tender-crawler.jar \
-  --crawler.filter.title-keywords-file=file:./config/flower-keywords.txt \
-  --crawler.filter.exclude-keywords-file=file:./config/exclude-keywords.txt
-```
+**改词表的两种方式**：日常直接用 App 内的「关键词」页（存本地库，**不用重新打包**）；
+改内置词表则编辑 `android/core/src/main/resources/keywords/*.txt` 后重新构建。
 
 **调优建议**：
 
@@ -270,13 +226,13 @@ java -jar target/flower-tender-crawler.jar \
 
 ---
 
-## 五、数据模型要点（旧版服务，字段与 App 的 SQLite 一致）
+## 四、数据模型要点（字段与 App 的 SQLite 一致）
 
 `tender_info` 表关键字段：
 
 | 字段 | 说明 |
 | --- | --- |
-| `url_hash` | URL 的 SHA-256 摘要，**唯一索引**（MySQL utf8mb4 下 varchar(1000) 无法建唯一索引，所以索引建在摘要上） |
+| `url_hash` | URL 的 SHA-256 摘要，**唯一索引**（原始 URL 太长、不适合直接建索引，所以索引建在摘要上） |
 | `region` | 区县，来自 `citycode` 映射或标题推断 |
 | `deadline_date` | **报名/投标截止日期**（手机端最关键的字段） |
 | `deadline_estimated` / `deadline_source` | 是否估算 / 来源（正文解析 / 发布日期+60天估算） |
@@ -288,7 +244,7 @@ java -jar target/flower-tender-crawler.jar \
 
 ---
 
-## 六、REST 接口（App 内置本地服务实现了同一套接口）
+## 五、REST 接口（App 内置本地服务）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -298,9 +254,11 @@ java -jar target/flower-tender-crawler.jar \
 | POST | `/api/tenders/mark-read` | 全部标记已读，返回剩余新公告数 |
 | GET | `/api/tenders/stats` | 统计：总数 / 未截止 / 新 / 收藏 / 各站点 / 各区县 / 已知区县列表 |
 | GET | `/api/tenders/export.csv` | 导出 CSV（含截止日期与剩余天数；UTF-8 BOM，已防 CSV 注入） |
-| POST | `/api/crawl/run?site=all&lookbackDays=30&maxKeywords=` | **异步**触发采集，立即返回 |
-| POST | `/api/crawl/run-sync?site=all` | **同步**触发采集 |
+| POST | `/api/crawl/run?site=all&lookbackDays=30&maxKeywords=` | **异步**触发采集，立即返回（App 内没有同步变体） |
 | POST | `/api/crawl/verify?limit=50` | 手动触发已下架校验 |
+| POST | `/api/reminder/check` | 立即跑一次截止提醒判定（与定时任务同一套逻辑） |
+| GET / POST | `/api/app/settings` | 读取 / 修改采集与提醒设置 |
+| GET | `/api/storage/stats` · POST `/api/storage/purge` | 库体积与可清理条数 / 执行清理 |
 | GET | `/api/crawl/status` | 采集状态 / 上次结果 |
 | GET | `/api/crawl/logs?limit=20` | 采集日志列表 |
 | GET | `/api/crawl/logs/{id}` | 单条日志完整明细（含逐条失败原因） |
@@ -313,79 +271,22 @@ java -jar target/flower-tender-crawler.jar \
 | GET | `/api/keywords/search-terms` | 当前真正会用于站内检索的词及其字段（排查"这词为什么没采到"） |
 | GET | `/api/keywords/scopes` | 作用域可选值与说明 |
 
-示例：
+服务只监听 `127.0.0.1:8765`，并且只在 **App 运行期间**可用（也可以在手机浏览器里直接打开）：
 
 ```bash
 # 手机端默认视图：未截止 + 最紧急优先
-curl "http://localhost:8080/api/tenders?onlyOpen=true&sort=deadline&size=5"
+curl "http://127.0.0.1:8765/api/tenders?onlyOpen=true&sort=deadline&size=5"
 
 # 桐城市的收藏
-curl "http://localhost:8080/api/tenders?region=%E6%A1%90%E5%9F%8E%E5%B8%82&tracked=true"
+curl "http://127.0.0.1:8765/api/tenders?region=%E6%A1%90%E5%9F%8E%E5%B8%82&tracked=true"
 ```
 
 ---
 
-## 七、配置说明（旧版服务 application.yml）
-
-```yaml
-crawler:
-  enabled: true
-  timezone: Asia/Shanghai        # 截止日期与过期判断统一时区
-  request:
-    min-interval-millis: 700     # 同域名最小请求间隔（礼貌抓取）
-    retry-times: 3               # 网络异常 / 5xx / 429 / 403 重试
-    max-detail-per-run: 300      # 单次最多抓多少详情页（控制耗时）
-    warm-up: true                # 首次访问域名前 GET 首页拿 WAF cookie；403 自动重取
-    cert-fallback-to-insecure: true   # 证书链校验失败自动降级（有 WARN）
-  filter:
-    title-keywords-file: keywords/flower-keywords.txt
-    content-keywords-file: keywords/flower-core-keywords.txt
-    exclude-keywords-file: keywords/exclude-keywords.txt
-    match-title: true
-    match-content: true
-  deadline:
-    parse-from-content: true
-    default-days: 60             # 解析不到时按 发布日 + N 天 估算
-    max-days: 400                # 超出此范围视为误判
-  verify:
-    enabled: true                # 采集后自动校验已下架
-    limit: 150
-    skip-hours: 12
-  schedule:
-    enabled: true
-    cron: "0 30 2 * * ?"
-    zone: Asia/Shanghai
-  sites:
-    aqggzy: { lookback-days: 30, max-pages-per-keyword: 2, content-length: 2000 }
-    cgj:    { max-pages: 2 }
-    wyxmzx: { lookback-days: 30, cnum: "080", referer: "" }   # referer 必须为空
-```
-
-### 切换到 MySQL
-
-```bash
-mysql -uroot -p -e "CREATE DATABASE flower_crawler DEFAULT CHARSET utf8mb4;"
-java -jar target/flower-tender-crawler.jar --spring.profiles.active=mysql
-```
-
-建表由 Hibernate `ddl-auto: update` 自动完成。生产环境记得关掉 H2 控制台
-（`spring.h2.console.enabled=false`）。
-
-### 手机端页面自检
-
-`tools/check-mobile-page.js` 是一个不依赖浏览器的静态自检脚本：
-检查内联 JS 语法、JS 引用的元素 id 是否都存在、手机端适配项是否齐全。
-
-```bash
-node tools/check-mobile-page.js src/main/resources/static/index.html src/main/java
-```
-
----
-
-## 八、合规与注意事项
+## 六、合规与注意事项
 
 - 内置**同域名最小请求间隔（默认 700ms）+ 随机 UA + 失败退避 + cookie 预热**，属于礼貌抓取，
-  请勿把 `min-interval-millis` 调得过低；
+  请勿把 `CrawlerSettings.request.minIntervalMillis` 调得过低；
 - 只采集公开的招标公告信息，遵守目标站点 `robots.txt` 与相关法律法规，
   不要用于批量转载或商业转售；
 - 建议每天 1~2 次增量即可（默认每天 02:30 一次）；
@@ -393,7 +294,7 @@ node tools/check-mobile-page.js src/main/resources/static/index.html src/main/ja
 
 ---
 
-## 九、已验证的真实采集结果（旧版服务）
+## 七、历史实测结果
 
 本机实测（全量采集一次，`lookbackDays=0` 建立历史基线）：
 
@@ -423,7 +324,7 @@ node tools/check-mobile-page.js src/main/resources/static/index.html src/main/ja
 
 ---
 
-## 十、已知限制
+## 八、已知限制
 
 1. 交易服务网索引里的转载类记录（`036xxx` / `005xxx` / `004xxx`）在本站没有落地页，
    只能给跳转链接 —— 上游数据本身如此；这类记录分类编码自成一套，
@@ -435,8 +336,8 @@ node tools/check-mobile-page.js src/main/resources/static/index.html src/main/ja
 4. 截止日期目前约 1/4 能从正文解析出来，其余为估算值（`deadline_estimated=true`），
    界面上已明确标注，实际投标前请以原文为准；
 5. 详情页正文依赖选择器，站点改版后需要同步调整；
-6. **未实现消息推送**：目前仍需用户主动打开页面查看。若要"手机上收到提醒"，
-   接一个 Pushplus / 企业微信机器人即可（数据侧 `is_new` + `deadline_date` 已就绪），
-   详见 [参考资料借鉴说明.md](参考资料借鉴说明.md) 第五节。
+6. **未实现远程推送**：本机通知已有（采集完成、截止提醒），但换设备/离线时收不到。
+   若要远程推送，接一个 Pushplus / 企业微信机器人即可
+   （数据侧 `is_new` + `deadline_date` 已就绪），详见 [参考资料借鉴说明.md](参考资料借鉴说明.md) 第五节。
 
 
