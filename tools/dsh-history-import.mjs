@@ -163,45 +163,54 @@ function run(options) {
       .map((entry) => entry.name)
       .sort();
 
-    step(`会话日志（${sessionDirs.length} 个）`);
+    step(`会话日志（${sessionDirs.length} 个会话）`);
     const importedIds = [];
     for (const sessionId of sessionDirs) {
       const sourceSessionDir = join(sourceSessionRoot, sourceProjectDir, sessionId);
       const targetSessionDir = join(targetProjectPath, sessionId);
-      const logName = readdirSync(sourceSessionDir).find((name) => /^session\.v\d+\.jsonl(\.zstd)?$/.test(name));
-      if (logName === undefined) {
+      // 同一会话可能有「多代」日志文件：DSH 升级格式时会保留 session.v3.* 并新写 session.v4.*，
+      // 当前生效的是最高版本那一代。用 find() 只取一个会漏掉新代（历史回退到旧状态），
+      // 所以这里复制全部代文件。
+      const logNames = readdirSync(sourceSessionDir)
+        .filter((name) => /^session\.v\d+\.jsonl(\.zstd)?$/.test(name))
+        .sort();
+      if (logNames.length === 0) {
         problems.push(`${sessionId}: 源目录里没有 session.v*.jsonl(.zstd)`);
         continue;
       }
-      const sourceLog = join(sourceSessionDir, logName);
-      const targetLog = join(targetSessionDir, logName);
-      const sourceSize = statSync(sourceLog).size;
-      const decoded = decodeSessionLog(sourceLog);
-      const version = decoded.header?.version ?? '?';
-      const headerCwd = decoded.header?.cwd ?? '(缺失)';
 
-      if (normalizePath(headerCwd) !== normalizePath(workspacePath)) {
-        problems.push(`${sessionId}: 日志 header.cwd=${headerCwd} 与工作区路径 ${workspacePath} 不一致`);
-      }
-      if (version !== 3) info(`  ! ${sessionId}: 日志格式 v${version}（本机 DSH 当前为 v3，会走内置升级链）`);
+      for (const logName of logNames) {
+        const sourceLog = join(sourceSessionDir, logName);
+        const targetLog = join(targetSessionDir, logName);
+        const sourceSize = statSync(sourceLog).size;
+        const decoded = decodeSessionLog(sourceLog);
+        const version = decoded.header?.version ?? '?';
+        const headerCwd = decoded.header?.cwd ?? '(缺失)';
+        const label = `${sessionId}/${logName}`;
 
-      const exists = existsSync(targetLog);
-      if (exists && !options.force) {
-        const same = statSync(targetLog).size === sourceSize && sha256(targetLog) === sha256(sourceLog);
-        info(`  = ${sessionId} 已存在且${same ? '内容一致' : '内容不同'}，跳过（--force 可覆盖）`);
-        if (!same) problems.push(`${sessionId}: 目标已存在但内容不同，未覆盖`);
-      } else if (options.dryRun) {
-        info(`  + ${sessionId} 待复制（${(sourceSize / 1024 / 1024).toFixed(2)} MB, ${decoded.frames} 帧, ${decoded.events} 事件）`);
-      } else {
-        mkdirSync(targetSessionDir, { recursive: true });
-        cpSync(sourceLog, targetLog, { force: true });
-        const copiedSize = statSync(targetLog).size;
-        const ok = copiedSize === sourceSize && sha256(targetLog) === sha256(sourceLog);
-        info(`  + ${sessionId} 已导入（${(sourceSize / 1024 / 1024).toFixed(2)} MB, ${decoded.frames} 帧, ${decoded.events} 事件）${ok ? '' : ' [校验失败]'}`);
-        if (!ok) problems.push(`${sessionId}: 复制后校验失败`);
+        if (normalizePath(headerCwd) !== normalizePath(workspacePath)) {
+          problems.push(`${label}: 日志 header.cwd=${headerCwd} 与工作区路径 ${workspacePath} 不一致`
+            + '（先用 tools/dsh-history-repath.mjs --cwd 改写）');
+        }
+
+        const exists = existsSync(targetLog);
+        if (exists && !options.force) {
+          const same = statSync(targetLog).size === sourceSize && sha256(targetLog) === sha256(sourceLog);
+          info(`  = ${label} 已存在且${same ? '内容一致' : '内容不同'}，跳过（--force 可覆盖）`);
+          if (!same) problems.push(`${label}: 目标已存在但内容不同，未覆盖`);
+        } else if (options.dryRun) {
+          info(`  + ${label} 待复制（v${version}, ${(sourceSize / 1024 / 1024).toFixed(2)} MB, ${decoded.frames} 帧, ${decoded.events} 事件）`);
+        } else {
+          mkdirSync(targetSessionDir, { recursive: true });
+          cpSync(sourceLog, targetLog, { force: true });
+          const copiedSize = statSync(targetLog).size;
+          const ok = copiedSize === sourceSize && sha256(targetLog) === sha256(sourceLog);
+          info(`  + ${label} 已导入（v${version}, ${(sourceSize / 1024 / 1024).toFixed(2)} MB, ${decoded.frames} 帧, ${decoded.events} 事件）${ok ? '' : ' [校验失败]'}`);
+          if (!ok) problems.push(`${label}: 复制后校验失败`);
+        }
+        summary.sessions.push({ id: sessionId, file: logName, bytes: sourceSize, frames: decoded.frames, events: decoded.events, version });
       }
       importedIds.push(sessionId);
-      summary.sessions.push({ id: sessionId, bytes: sourceSize, frames: decoded.frames, events: decoded.events, version });
     }
 
     // ------------------------------------------------- 合并登记表（不覆盖本机记录）
@@ -247,7 +256,15 @@ function run(options) {
     step('附件 attachments/');
     const targetAttachments = join(dshHome, 'attachments');
     mkdirSync(targetAttachments, { recursive: true });
-    cpSync(sourceAttachments, targetAttachments, { recursive: true, force: true });
+    // 附件复制失败不应中断整个导入：同一台机器上附件本来就在目标位置（甚至可能被
+    // 运行中的 DSH 占用），这时复制是多余的；而且真实目的是别让失败挡住后面的
+    // 「登记表落盘」——否则会留下「日志已复制、却没登记」的半成品状态。
+    try {
+      cpSync(sourceAttachments, targetAttachments, { recursive: true, force: true });
+    } catch (error) {
+      info(`  ! 附件复制失败（已跳过，不影响会话导入）：${error.message}`);
+      problems.push(`附件复制失败（已跳过）：${error.message}`);
+    }
     let count = 0;
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -257,7 +274,7 @@ function run(options) {
     };
     walk(sourceAttachments);
     summary.attachments = count;
-    info(`  + 已合并 ${count} 个附件文件到 ${targetAttachments}`);
+    info(`  + 源附件 ${count} 个，目标目录 ${targetAttachments}`);
   } else if (existsSync(sourceAttachments) && options.dryRun) {
     step('附件 attachments/');
     info('  + 待合并到 ' + join(dshHome, 'attachments'));
